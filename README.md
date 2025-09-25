@@ -25,10 +25,27 @@ base-offset-fitter/
 │   ├── nonlinear_minimization.py        # Constrained optimization
 │   └── plotly_manager.py                # Visualization
 ├── notebooks/                 # Jupyter notebooks for analysis
-└── data/                     # Input data directory
+└── data_bbo/                 # Input data directory (Best Bid/Offer)
 ```
 
-## Key Features
+## Configuration
+
+### Data Source Selection
+The system supports two types of market data:
+
+```python
+# In main.py or jupyter notebook
+use_orderbook_data = False  # Set True/False to choose data type
+
+# False: Best Bid/Offer data (data_bbo/)
+# True:  Order Book Depth data (data_orderbook/)
+```
+
+### Directory Structure
+```
+├── data_bbo/                 # Best Bid/Offer market data
+├── data_orderbook/           # Order Book Depth market data (optional)
+```
 
 ### Put-Call Parity Analysis
 - Implements the equation: `P - C = K*exp(-r*t) - S*exp(-q*t)`

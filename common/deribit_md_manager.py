@@ -5,7 +5,22 @@ Handles processing of Deribit Bitcoin options market data including:
 - Symbol parsing and categorization
 - Data conflation and enrichment
 - Option chain construction
-- Spread tightening with monotonicity and no-arbitrage constraints
+- Spread tigh            ]).with_columns([
+                pl.col("bid").round(2),
+                pl.col("ask").round(2), 
+                pl.col("mid").round(2),
+                pl.col("spread").round(2)
+            ])
+        )
+        
+        # Build column list dynamically based on available columns
+        base_columns = ['strike','bid','ask','mid','spread', 'S', 'tau', 'bid_price_fut', 'ask_price_fut']
+        
+        # Add futures size columns if available
+        if 'bid_size_fut' in df.columns and 'ask_size_fut' in df.columns:
+            base_columns.extend(['bid_size_fut', 'ask_size_fut'])
+            
+        return result.select(base_columns).sort('strike')ith monotonicity and no-arbitrage constraints
 """
 
 from datetime import datetime
@@ -15,7 +30,8 @@ import polars as pl
 
 class DeribitMDManager:
     """Manager for processing Deribit market data and constructing option chains."""
-    
+    CONFLATION_COLUMNS = ['bid_price', 'ask_price']
+
     def __init__(self, df: pl.LazyFrame, date_str: str):
         """
         Initialize the market data manager.
@@ -60,30 +76,47 @@ class DeribitMDManager:
             df = self.df_symbol.filter(pl.col("is_future") == is_future)
         return df.select(['expiry', 'expiry_ts']).unique().sort('expiry_ts')['expiry'].to_list()
 
+    def get_sorted_expiries(self) -> list[str]:
+        """Get sorted list of option expiries."""
+        sorted_expiries = sorted(self.opt_expiries, 
+                                  key=lambda x: self.df_symbol.filter(pl.col('expiry') == x)['expiry_ts'][0])
+        return sorted_expiries
+
+    def with_parsed_timestamps(self, lazy_df: pl.LazyFrame) -> pl.LazyFrame:
+        """Return DataFrame with timestamps parsed as datetime objects."""
+        return lazy_df.with_columns(
+            timestamp=(pl.lit(self.date_str) + " " + pl.col("timestamp")).str.strptime(pl.Datetime, "%Y%m%d %H:%M:%S%.f"),
+        )
+
+    def get_conflation_columns(self) -> list[str]:
+        """Get list of columns used for conflation."""
+        return self.CONFLATION_COLUMNS
+
     def get_conflated_md(self, freq: str, period: str) -> pl.DataFrame:
         """
-        Conflate market data to regular time intervals.
-        
+        Conflate market data to regular time intervals and enrich with symbol info and derived columns.
+
         Args:
             freq: Frequency for conflation (e.g., "1m")
             period: Lookback period (e.g., "10m")
-            
+
         Returns:
-            Conflated market data DataFrame
+            Conflated and enriched market data DataFrame
         """
-        df = self.lazy_df.with_columns(
-            timestamp=(pl.lit(self.date_str) + " " + pl.col("timestamp")).str.strptime(pl.Datetime, "%Y%m%d %H:%M:%S%.f"),
-        ).group_by_dynamic(
+        parsed_lazy_df = self.with_parsed_timestamps(self.lazy_df)
+        df = self._get_conflated_md(parsed_lazy_df, freq, period)
+        return self.enrich_conflated_md(self.join_symbol_info(df))
+
+    def _get_conflated_md(self, parsed_lazy_df: pl.LazyFrame, freq: str, period: str) -> pl.DataFrame:
+        return parsed_lazy_df.group_by_dynamic(
             every=freq,
             period=period,
             index_column="timestamp",
             group_by="symbol",
             label="right",
         ).agg(
-            pl.col('bid_price').last().alias('bid_price'),
-            pl.col('ask_price').last().alias('ask_price'),
+            [pl.col(col).last().alias(col) for col in self.get_conflation_columns()]
         ).collect().sort(['timestamp', 'symbol'])
-        return self.enrich_conflated_md(self.join_symbol_info(df))
 
     def join_symbol_info(self, df: pl.DataFrame) -> pl.DataFrame:
         """Join symbol information to market data."""
@@ -173,8 +206,23 @@ class DeribitMDManager:
         calls = self.find_options(df, expiry=expiry, timestamp=timestamp, is_call=True)
         puts = self.find_options(df, expiry=expiry, timestamp=timestamp, is_call=False)
 
-        return calls[['timestamp','bid_price','ask_price','strike']].join(
-            puts[['bid_price','ask_price','S','bid_price_fut','ask_price_fut','strike','expiry','tau']],
+        # Build column lists dynamically based on available columns
+        base_call_cols = ['timestamp','bid_price','ask_price','strike']
+        base_put_cols = ['bid_price','ask_price','S','bid_price_fut','ask_price_fut','strike','expiry','tau']
+        
+        # Add size columns if available
+        if 'bid_size' in calls.columns and 'ask_size' in calls.columns:
+            base_call_cols.extend(['bid_size', 'ask_size'])
+            
+        if 'bid_size' in puts.columns and 'ask_size' in puts.columns:
+            base_put_cols.extend(['bid_size', 'ask_size'])
+            
+        # Add futures size columns if available
+        if 'bid_size_fut' in puts.columns and 'ask_size_fut' in puts.columns:
+            base_put_cols.extend(['bid_size_fut', 'ask_size_fut'])
+
+        return calls[base_call_cols].join(
+            puts[base_put_cols],
             on=['strike'],
             suffix='_P',
             validate='1:1'
@@ -192,17 +240,36 @@ class DeribitMDManager:
         Returns:
             Synthetic DataFrame with P-C differences in USD terms
         """
-        return (
+        result = (
             df.with_columns(
                 (pl.col('S') * (pl.col('bid_price_P') - pl.col('ask_price'))).alias('bid'),  # convert to USD
                 (pl.col('S') * (pl.col('ask_price_P') - pl.col('bid_price'))).alias('ask'),
             ).with_columns(
                 mid=(pl.col("bid") + pl.col("ask")) / 2,
                 spread=pl.col("ask") - pl.col("bid"),
-            ).select(
-                ['strike','bid','ask','mid','spread', 'S', 'tau', 'bid_price_fut', 'ask_price_fut']
-            ).sort('strike')
+            ).with_columns([
+                pl.col("bid").round(2),
+                pl.col("ask").round(2), 
+                pl.col("mid").round(2),
+                pl.col("spread").round(2)
+            ])
         )
+        
+        # Build column list dynamically based on available columns
+        base_columns = ['strike','bid','ask','mid','spread', 'S', 'tau', 'bid_price_fut', 'ask_price_fut']
+        
+        # Add option size columns if available (call and put sizes)
+        if 'bid_size' in df.columns and 'ask_size' in df.columns:
+            base_columns.extend(['bid_size', 'ask_size'])  # Call sizes
+            
+        if 'bid_size_P' in df.columns and 'ask_size_P' in df.columns:
+            base_columns.extend(['bid_size_P', 'ask_size_P'])  # Put sizes
+        
+        # Add futures size columns if available
+        if 'bid_size_fut' in df.columns and 'ask_size_fut' in df.columns:
+            base_columns.extend(['bid_size_fut', 'ask_size_fut'])
+            
+        return result.select(base_columns).sort('strike')
 
     def apply_monotonicity(self, 
                           bid_price_call: np.ndarray, 
@@ -358,3 +425,8 @@ class DeribitMDManager:
         )
         
         return df_modified_option_chain, df_option_synthetic
+    
+    def is_expiry_today(self, expiry: str) -> bool:
+        """Check if the given expiry is today."""
+        return expiry == datetime.strptime(self.date_str, "%Y%m%d").strftime("%d%b%y").upper()
+    

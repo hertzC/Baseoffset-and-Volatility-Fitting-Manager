@@ -20,33 +20,42 @@ import sys
 
 # Import project modules
 from common.deribit_md_manager import DeribitMDManager
+from common.orderbook_deribit_md_manager import OrderbookDeribitMDManager
 from common.plotly_manager import PlotlyManager
 from common.weight_least_square_regressor import WLSRegressor
 from common.nonlinear_minimization import NonlinearMinimization
 
 
-def load_market_data(date_str: str, data_file: str) -> pl.LazyFrame:
+def load_market_data(date_str: str, data_file: str, use_orderbook_data: bool = False) -> pl.LazyFrame:
     """
     Load Deribit market data from CSV file.
     
     Args:
         date_str: Date string in YYYYMMDD format
+        data_file: Path to the data file
+        use_orderbook_data: If True, load as orderbook depth data, otherwise as BBO data
         
     Returns:
         LazyFrame with market data or sample data if file not found
     """
-    # data_file = f"data/{date_str}.output.csv.gz"
-    
     try:
         # Check if file exists first
         if not os.path.exists(data_file):
             raise FileNotFoundError(f"Data file not found: {data_file}")
             
+        # Load data - both types use the same lazy loading approach
+        if use_orderbook_data:
+            print(f"📖 Loading order book depth data from {data_file}")
+        else:
+            print(f"📈 Loading BBO data from {data_file}")
+            
         df_market_updates = pl.scan_csv(data_file)
-        # Try to trigger any lazy evaluation errors
+        
+        # Validate data structure
         _ = df_market_updates.select("symbol").unique().collect()
         print(f"✅ Successfully loaded data from {data_file}")
         return df_market_updates
+        
     except Exception as e:
         print(f"⚠️  Error loading data from {data_file}: {e}")
         print("📝 Creating sample data for demonstration...")
@@ -242,17 +251,39 @@ def main():
     
     # Configuration
     date_str = "20240229"  # YYYYMMDD format
+    use_orderbook_data = False  # Set True to use order book depth data, False for BBO data
     conflation_every = "1m"   # 1-minute intervals
     conflation_period = "10m" # 10-minute lookback
+    
+    # Determine data source based on configuration
+    if use_orderbook_data:
+        data_dir = "data_orderbook"
+        data_type = "Order Book Depth"
+    else:
+        data_dir = "data_bbo"
+        data_type = "Best Bid/Offer (BBO)"
+    
+    data_file = f'{data_dir}/{date_str}.market_updates-1318071-20250916.log'
     
     try:
         # 1. Load market data
         print("🔄 Step 1: Loading market data...")
-        df_market_updates = load_market_data(date_str, data_file:=f'data/{date_str}.market_updates-1318071-20250916.log')
+        print(f"📂 Data source: {data_type} from {data_dir}/")
+        df_market_updates = load_market_data(date_str, data_file)
         
         # 2. Initialize components
         print("\n🔧 Step 2: Initializing analysis components...")
-        symbol_manager = DeribitMDManager(df_market_updates, date_str)
+        # Initialize symbol manager with appropriate class
+        if use_orderbook_data:
+            orderbook_level = 0  # Use best bid/ask (level 0)
+            normalize_volume = True  # Normalize USD volumes to BTC for futures/perpetuals
+            print(f"🔧 Using OrderbookDeribitMDManager for orderbook data conversion")
+            print(f"   - Level: {orderbook_level} ({'best' if orderbook_level == 0 else f'{orderbook_level}th best'})")
+            print(f"   - Volume normalization: {'enabled' if normalize_volume else 'disabled'}")
+            symbol_manager = OrderbookDeribitMDManager(df_market_updates, date_str, level=orderbook_level, normalize_volume=normalize_volume)
+        else:
+            print("🔧 Using standard DeribitMDManager for BBO data")
+            symbol_manager = DeribitMDManager(df_market_updates, date_str)
         wls_regressor = WLSRegressor()
         nonlinear_minimizer = NonlinearMinimization()
         plotly_manager = PlotlyManager(date_str, symbol_manager.fut_expiries)
@@ -305,7 +336,7 @@ def main():
         
         print(f"\n🎉 Analysis completed successfully!")
         print("📝 Next steps:")
-        print("   1. Add real Deribit data files to the data/ directory")
+        print("   1. Add real Deribit data files to data_bbo/ or data_orderbook/ directory")
         print("   2. Run the Jupyter notebook for interactive analysis")
         print("   3. Modify parameters for your specific use case")
         print("   4. Enable time series analysis for comprehensive results")

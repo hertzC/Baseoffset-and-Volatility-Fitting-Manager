@@ -1,10 +1,11 @@
 polars>=1.0.0
 numpy>=1.24.0
 scipy>=1.10.0
-statsmodels>=0.14.0
+statsmodels>=0.14.5
 plotly>=5.0.0
 jupyter>=1.0.0
 ipykernel>=6.0.0
+nbformat>=4.2.0
 pandas>=2.0.0  # For compatibility with some visualization components
 matplotlib>=3.7.0
 great-tables>=0.2.0  # For table formatting in notebooks
