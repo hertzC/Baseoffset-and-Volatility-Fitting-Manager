@@ -15,17 +15,32 @@ This project implements a sophisticated cryptocurrency options trading analytics
 ## Project Structure
 
 ```
-base-offset-fitter/
+baseoffset-fitting-manager/
 ├── main.py                    # Main entry point
 ├── requirements.txt           # Python dependencies
-├── common/                    # Core modules
+├── automated_test_runner.py   # Automated test execution and reporting
+├── btc_options/              # Bitcoin Options Analysis Library
 │   ├── __init__.py
-│   ├── deribit_md_manager.py     # Market data processing
-│   ├── weight_least_square_regressor.py  # WLS regression
-│   ├── nonlinear_minimization.py        # Constrained optimization
-│   └── plotly_manager.py                # Visualization
+│   ├── data_managers/        # Market data processing
+│   │   ├── __init__.py
+│   │   ├── deribit_md_manager.py         # Core market data manager
+│   │   └── orderbook_deribit_md_manager.py # Extended orderbook manager
+│   ├── analytics/            # Regression and optimization
+│   │   ├── __init__.py
+│   │   ├── weight_least_square_regressor.py  # WLS regression analysis
+│   │   └── nonlinear_minimization.py        # Constrained optimization
+│   └── visualization/        # Interactive plotting and tables
+│       ├── __init__.py
+│       ├── plotly_manager.py             # Interactive visualizations
+│       └── html_table_generator.py       # HTML table generation
+├── tests/                     # Comprehensive test suite
+│   ├── __init__.py
+│   ├── test_bitcoin_options.py          # Core functionality tests
+│   └── test_notebook.py                 # Notebook-specific tests
 ├── notebooks/                 # Jupyter notebooks for analysis
-└── data_bbo/                 # Input data directory (Best Bid/Offer)
+│   └── bitcoin_options_analysis.ipynb   # Main analysis notebook
+├── data_bbo/                 # Best Bid/Offer market data
+└── data_orderbook/           # Order Book Depth market data
 ```
 
 ## Configuration

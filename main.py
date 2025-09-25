@@ -18,12 +18,12 @@ from datetime import datetime, timedelta
 import os
 import sys
 
-# Import project modules
-from common.deribit_md_manager import DeribitMDManager
-from common.orderbook_deribit_md_manager import OrderbookDeribitMDManager
-from common.plotly_manager import PlotlyManager
-from common.weight_least_square_regressor import WLSRegressor
-from common.nonlinear_minimization import NonlinearMinimization
+# Import project modules from btc_options
+from btc_options.data_managers.deribit_md_manager import DeribitMDManager
+from btc_options.data_managers.orderbook_deribit_md_manager import OrderbookDeribitMDManager
+from btc_options.visualization.plotly_manager import PlotlyManager
+from btc_options.analytics.weight_least_square_regressor import WLSRegressor
+from btc_options.analytics.nonlinear_minimization import NonlinearMinimization
 
 
 def load_market_data(date_str: str, data_file: str, use_orderbook_data: bool = False) -> pl.LazyFrame:
