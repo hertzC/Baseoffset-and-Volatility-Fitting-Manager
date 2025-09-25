@@ -285,7 +285,10 @@ def main():
             print("🔧 Using standard DeribitMDManager for BBO data")
             symbol_manager = DeribitMDManager(df_market_updates, date_str)
         wls_regressor = WLSRegressor()
-        nonlinear_minimizer = NonlinearMinimization()
+        nonlinear_minimizer = NonlinearMinimization()  # Rate constraints: r ∈ [-5%, +10%], q ∈ [-30%, +100%]
+        
+        # For custom rate constraints in optimization, use:
+        # nonlinear_minimizer = NonlinearMinimization(r_min=-0.02, r_max=0.08, q_min=-0.10, q_max=0.50)
         plotly_manager = PlotlyManager(date_str, symbol_manager.fut_expiries)
         
         print(f"📊 Available option expiries: {symbol_manager.opt_expiries}")

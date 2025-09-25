@@ -102,8 +102,11 @@ class WLSRegressor:
         Returns:
             Result dictionary with derived financial parameters
         """
+        # Calculate raw rates from regression parameters
         r = float(np.log(coef) / -tau)  # USD interest rate
         q = float(np.log(-const / S) / -tau)  # BTC funding rate
+        
+        # Recalculate derived metrics with rates
         discount_rate = float(np.exp((r - q) * tau))
         implied_F = round(discount_rate * S, 3)  # Forward price
         base_offset = implied_F - S
