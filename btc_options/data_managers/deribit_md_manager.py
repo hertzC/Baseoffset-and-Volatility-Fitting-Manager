@@ -368,7 +368,7 @@ class DeribitMDManager:
             modified_bid_put.copy(), 
             modified_ask_put.copy(), 
             strike=df['strike'].to_numpy().copy(), 
-            spot=df['S'][0]
+            spot=df['S'].drop_nulls()[0]
         )
 
         return df.with_columns(
@@ -402,13 +402,13 @@ class DeribitMDManager:
         df_filtered = df.filter(pl.col("expiry") == expiry, pl.col("timestamp") == timestamp)
         
         if df_filtered.is_empty():
-            return df_filtered, df_filtered, df_filtered
+            return df_filtered, df_filtered
         
         # Get the option chain
         df_option_chain = self.get_option_chain(df_filtered, expiry=expiry, timestamp=timestamp)
         
         if df_option_chain.is_empty():
-            return df_option_chain, df_option_chain, df_option_chain
+            return df_option_chain, df_option_chain
         
         # Apply spread tightening
         # print(f"📊 Modifying option chain size....")

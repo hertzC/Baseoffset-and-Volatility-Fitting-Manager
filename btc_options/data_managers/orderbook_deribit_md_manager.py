@@ -6,6 +6,7 @@ Automatically converts order book data to BBO format during initialization,
 then behaves exactly like the standard DeribitMDManager.
 """
 
+import numpy as np
 import polars as pl
 from .deribit_md_manager import DeribitMDManager
 
@@ -34,12 +35,7 @@ class OrderbookDeribitMDManager(DeribitMDManager):
             date_str: Date string in YYYYMMDD format
             level: Which orderbook level to use (0=best, 1=second best, etc.)
             normalize_volume: Whether to normalize USD volumes to BTC for futures/perpetuals
-        # """
-        # # Convert orderbook LazyFrame to BBO format using specified level
-        # df_bbo = df_orderbook.collect().pipe(lambda df: self.convert_orderbook_to_bbo(df, level)).lazy()
-        
-        # # Initialize parent class first to get symbol classification
-        # df_bbo_lazy = df_bbo
+        """
         super().__init__(df_orderbook, date_str)
         self.num_of_level = level  # Store the order book level used
         self.future_min_tick = 0.0001  # Minimum tick size for Deribit futures and perpetuals
@@ -89,8 +85,8 @@ class OrderbookDeribitMDManager(DeribitMDManager):
         
         # Convert to BBO format
         bbo_data = df_orderbook.select([
-            'timestamp',
-            pl.col('local_timestamp').alias('exchange_timestamp'),  # Use local_timestamp as exchange_timestamp
+            pl.col('timestamp').alias('exchange_timestamp'), # Use timestamp as exchange_timestamp
+            pl.col('local_timestamp').alias('timestamp'),  
             'symbol',
             pl.col(bid_price_col).alias('bid_price'),
             pl.col(ask_price_col).alias('ask_price'),
@@ -182,7 +178,29 @@ class OrderbookDeribitMDManager(DeribitMDManager):
         Reuses parent's conflation logic but with extended column set.
         """
         # Convert orderbook to BBO format
-        lazy_df = self.lazy_df.collect().pipe(lambda df: self.convert_orderbook_to_bbo(df, self.num_of_level)).lazy()
+
+        # for option
+        temp_option =\
+        self.lazy_df.filter(
+            pl.col("symbol").str.ends_with('-C') | pl.col("symbol").str.ends_with('-P')
+        ).collect().pipe(lambda df: self.convert_orderbook_to_bbo(df, self.num_of_level))
+
+        temp_delta_one = self.lazy_df.filter(
+            ~pl.col("symbol").str.ends_with("-C") & ~pl.col("symbol").str.ends_with("-P")
+        ).collect()
+        bid_vwap, ask_vwap, bid_size, ask_size = self.get_vwap_price(temp_delta_one)
+        temp_delta_one =\
+        temp_delta_one.with_columns(
+            bid_price = np.array(bid_vwap, dtype=np.float64),
+            ask_price = np.array(ask_vwap, dtype=np.float64),
+            bid_size = np.array(bid_size, dtype=np.float64),
+            ask_size = np.array(ask_size, dtype=np.float64)
+        ).rename(
+            {'timestamp': 'exchange_timestamp', 'local_timestamp': 'timestamp'}
+        ).select(temp_option.columns)
+
+        # lazy_df = self.lazy_df.collect().pipe(lambda df: self.convert_orderbook_to_bbo(df, self.num_of_level)).lazy()
+        lazy_df = pl.concat([temp_option, temp_delta_one]).lazy()
         
         # Parse timestamps (reuse parent's method)
         parsed_lazy_df = self.with_parsed_timestamps(lazy_df)
@@ -192,6 +210,44 @@ class OrderbookDeribitMDManager(DeribitMDManager):
         df = self.normalize_volume_to_btc(df)
         # Reuse parent's enrichment methods
         return self.enrich_conflated_md(self.join_symbol_info(df))
+
+    def get_vwap_price(self, df: pl.DataFrame) -> tuple[list, list, list, list]:
+        target_btc = 1
+        bid_vwap, ask_vwap = [], []
+        bid_size, ask_size = [], []
+        bid_price_cols = [f"bids[{level}].price" for level in range(5)]
+        bid_amount_cols = [f"bids[{level}].amount" for level in range(5)]
+        ask_price_cols = [f"asks[{level}].price" for level in range(5)]
+        ask_amount_cols = [f"asks[{level}].price" for level in range(5)]
+
+        for row in df.iter_rows(named=True):
+            if row['index_price'] is None:
+                bid_vwap.append(None)
+                ask_vwap.append(None)
+                bid_size.append(None)
+                ask_size.append(None)
+            else:
+                target_volume = target_btc * row['index_price']
+                cumulative_bid_volume = 0
+                cumulative_ask_volume = 0
+                for i in range(5):
+                    if row[bid_amount_cols[i]] is not None:
+                        cumulative_bid_volume += row[bid_amount_cols[i]]
+                    if cumulative_bid_volume >= target_volume:
+                        break
+                bid_vwap.append(row[bid_price_cols[i]])
+                bid_size.append(min(target_volume, cumulative_bid_volume) / row['index_price'])
+
+                for i in range(5):
+                    if row[ask_amount_cols[i]] is not None:
+                        cumulative_ask_volume += row[ask_amount_cols[i]]
+                    if cumulative_ask_volume >= target_volume:
+                        break
+                ask_vwap.append(row[ask_price_cols[i]])
+                ask_size.append(min(target_volume, cumulative_ask_volume) / row['index_price'])
+
+        return bid_vwap, ask_vwap, bid_size, ask_size
+
 
     def with_parsed_timestamps(self, lazy_df: pl.LazyFrame) -> pl.LazyFrame:
         """
