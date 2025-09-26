@@ -58,7 +58,7 @@ class WLSRegressor:
         X_with_const = sm.add_constant(X)
         return y, X_with_const, weight
 
-    def fit(self, df: pl.DataFrame, prev_const: float = None, prev_coef: float = None) -> Result:
+    def fit(self, df: pl.DataFrame, **kwargs) -> Result:
         """
         Fit put-call parity regression to extract interest rates.
         

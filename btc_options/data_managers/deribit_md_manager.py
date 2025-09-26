@@ -424,8 +424,8 @@ class DeribitMDManager:
             )
         )
         
-        return df_modified_option_chain, df_option_synthetic
-    
+        return df_modified_option_chain, df_option_synthetic    
+
     def is_expiry_today(self, expiry: str) -> bool:
         """Check if the given expiry is today."""
         return expiry == datetime.strptime(self.date_str, "%Y%m%d").strftime("%d%b%y").upper()
