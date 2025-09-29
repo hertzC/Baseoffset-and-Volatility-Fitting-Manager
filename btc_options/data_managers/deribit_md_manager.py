@@ -227,6 +227,8 @@ class DeribitMDManager:
             suffix='_P',
             validate='1:1'
         ).with_columns(
+            S = pl.col('S').mode().first()  # S can vary slightly, take the mode
+        ).with_columns(
             future_basis = (pl.col('bid_price_fut') + pl.col('ask_price_fut'))/2 - pl.col('S'),
         ).sort('strike')
 

@@ -208,7 +208,6 @@ class OrderbookDeribitMDManager(DeribitMDManager):
         # Use parent's conflation logic but with our extended columns
         df = super()._get_conflated_md(parsed_lazy_df, freq, period)
         df = self.normalize_volume_to_btc(df)
-        # Reuse parent's enrichment methods
         return self.enrich_conflated_md(self.join_symbol_info(df))
     
     def get_volume_targeted_price(self, df: pl.DataFrame, target_btc: int) -> tuple[list, list, list, list]:
