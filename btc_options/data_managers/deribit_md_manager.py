@@ -432,5 +432,5 @@ class DeribitMDManager:
 
     def is_expiry_today(self, expiry: str) -> bool:
         """Check if the given expiry is today."""
-        return expiry == datetime.strptime(self.date_str, "%Y%m%d").strftime("%d%b%y").upper()
+        return expiry == datetime.strptime(self.date_str, "%Y%m%d").strftime("%d%b%y").lstrip('0').upper()
     
