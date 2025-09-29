@@ -27,25 +27,16 @@ class NonlinearMinimization(WLSRegressor):
         """
         super().__init__()
         self.future_spread_mult = future_spread_mult
-        self.future_spread_threshold = future_spread_threshold
+        self.future_spread_threshold = future_spread_threshold    
+        self.r_min, self.r_max = -0.01, 0.5
+        self.q_min, self.q_max = -0.005, 0.1
+        self.minimum_rate, self.maximum_rate = -0.005, 0.30  # on r-q
 
     def objective(self, params, X, y, weights):
         """Calculate weighted sum of squared residuals."""
         const, x1 = params
         residuals = y - (const + x1 * X[:, 1])
         return np.sum(weights * residuals**2)
-
-    def nonlinear_constraint_func(self, upper_bound: float, lower_bound: float):
-        """
-        Create constraint functions for forward price bounds.
-        
-        Constraint: lower_bound <= -const/coef <= upper_bound
-        where F = -const/coef is the forward price
-        """
-        return [
-            {'type': 'ineq', 'fun': lambda params: -params[0] / params[1] - lower_bound},
-            {'type': 'ineq', 'fun': lambda params: upper_bound - (-params[0] / params[1])}
-        ]
 
     def create_future_boundaries(self, best_bid_price: float, best_ask_price: float) -> tuple[float, float]:
         """
@@ -67,14 +58,6 @@ class NonlinearMinimization(WLSRegressor):
                       f"based on future price {best_bid_price:.2f} - {best_ask_price:.2f}")
         return lower_bound, upper_bound
 
-    def check_if_future_too_wide(self, best_bid_price: float, best_ask_price: float, spot_price: float) -> bool:
-        """Check if futures spread exceeds threshold."""
-        spread = (best_ask_price - best_bid_price) / spot_price
-        if spread > self.future_spread_threshold:
-            self.own_print(f"Future spread is {spread:.4f}, threshold is {self.future_spread_threshold:.4f}")
-            return True
-        return False
-
     def fit(self, df: pl.DataFrame, prev_const: float, prev_coef: float) -> Result:
         """
         Fit constrained optimization with futures bounds when available.
@@ -88,32 +71,19 @@ class NonlinearMinimization(WLSRegressor):
             Result dictionary with fitted parameters
         """
         if df.is_empty():
-            raise ValueError("DataFrame is empty. Cannot fit model.")
+            raise ValueError("DataFrame is empty. Cannot fit model.")        
 
         initial_guess = np.array([prev_const, prev_coef])
-        lower_bound, upper_bound = None, None
-        
-        # Check if futures data is available and spread is acceptable
-        if (df['bid_price_fut'].is_not_null().all() and 
-            df['ask_price_fut'].is_not_null().all()):
-            
-            best_bid_price = df['bid_price_fut'][0]
-            best_ask_price = df['ask_price_fut'][0]
-            spot_price = df['S'][0]
-            
-            if not self.check_if_future_too_wide(best_bid_price, best_ask_price, spot_price):
-                lower_bound, upper_bound = self.create_future_boundaries(best_bid_price, best_ask_price)
-                return self.minimize_error(df, initial_guess, lower_bound, upper_bound, True)
-            
-            self.own_print("Future spread too wide, skip the constraint")
-            return self.minimize_error(df, initial_guess, lower_bound, upper_bound, False)
-        
-        # Non-future expiry or no futures data
-        self.own_print("Non-future expiry, use unconstrained optimization")
-        return self.minimize_error(df, initial_guess, lower_bound, upper_bound, False)
+        tau = df['tau'][0]
+        spot_price = df['S'][0]
+        best_future_bid_price = df['bid_price_fut'][0]
+        best_future_ask_price = df['ask_price_fut'][0]
 
-    def minimize_error(self, df: pl.DataFrame, initial_guess: np.ndarray, 
-                      lower_bound: float, upper_bound: float, use_constraints: bool) -> Result:
+        is_future_expiry = best_future_bid_price is not None and best_future_ask_price is not None
+        return self.minimize_error(df, initial_guess, spot_price, tau, best_future_bid_price, best_future_ask_price, is_future_expiry)
+
+    def minimize_error(self, df: pl.DataFrame, initial_guess: np.ndarray, spot: float, tau: float,
+                      future_best_bid: np.ndarray, future_best_ask: np.ndarray, is_future_expiry: bool) -> Result:
         """
         Perform the actual optimization.
         
@@ -128,21 +98,28 @@ class NonlinearMinimization(WLSRegressor):
             Result dictionary
         """
         y, X_with_const, weight = self.construct_inputs(df)
+        # constraint functions for interest rate and funding rate bounds from the slope (= exp(-r * T) and constant (= S*exp(-q * T))).
+        constraints = [
+            {'type': 'ineq', 'fun': lambda params: -np.log(params[1]) - self.r_min * tau},  # Ensure r > r_min
+            {'type': 'ineq', 'fun': lambda params: np.log(params[1]) + self.r_max * tau},  # Ensure r < r_max
+            {'type': 'ineq', 'fun': lambda params: -np.log(-params[0] / spot) - self.q_min * tau},  # Ensure q > q_min
+            {'type': 'ineq', 'fun': lambda params: np.log(-params[0] / spot) + self.q_max * tau},  # Ensure q < q_max
+            {'type': 'ineq', 'fun': lambda params: -np.log(params[1]) + np.log(-params[0] / spot) - self.minimum_rate * tau},  # Ensure r - q >= minimum_rate
+            {'type': 'ineq', 'fun': lambda params: np.log(params[1]) - np.log(-params[0] / spot) + self.maximum_rate * tau},   # Ensure r - q <= maximum_rate
+        ]
+        if is_future_expiry:
+            lower_bound, upper_bound = self.create_future_boundaries(future_best_bid, future_best_ask)
+            constraints += [
+                {'type': 'ineq', 'fun': lambda params: -params[0] / params[1] - lower_bound},
+                {'type': 'ineq', 'fun': lambda params: upper_bound - (-params[0] / params[1])},
+            ]
         
-        if use_constraints:
-            result = minimize(
+        result = minimize(
                 fun=self.objective,
                 x0=initial_guess,
                 args=(X_with_const, y, weight),
                 method='SLSQP',
-                constraints=self.nonlinear_constraint_func(upper_bound, lower_bound)
-            )
-        else:
-            result = minimize(
-                fun=self.objective,
-                x0=initial_guess,
-                args=(X_with_const, y, weight),
-                method='SLSQP'
+                constraints=constraints
             )
         
         if not result.success:

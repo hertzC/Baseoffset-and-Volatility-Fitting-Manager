@@ -352,6 +352,8 @@ class DeribitMDManager:
         Returns:
             DataFrame with tightened spreads and original values preserved
         """
+        df = df.drop_nulls(['bid_price', 'ask_price', 'bid_price_P', 'ask_price_P', 'S'])
+        
         if df.is_empty():
             return df
             

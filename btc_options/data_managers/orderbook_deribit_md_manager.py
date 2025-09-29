@@ -39,6 +39,7 @@ class OrderbookDeribitMDManager(DeribitMDManager):
         super().__init__(df_orderbook, date_str)
         self.num_of_level = level  # Store the order book level used
         self.future_min_tick = 0.0001  # Minimum tick size for Deribit futures and perpetuals
+        self.price_widening_factor = 0.0001  # 1 basis point price widening if not enough depth
 
     @staticmethod
     def convert_orderbook_to_bbo(df_orderbook: pl.DataFrame, level: int = 0) -> pl.DataFrame:
@@ -212,7 +213,6 @@ class OrderbookDeribitMDManager(DeribitMDManager):
     
     def get_volume_targeted_price(self, df: pl.DataFrame, target_btc: int) -> tuple[list, list, list, list]:
         """ given the target number of coins, how much depth can we reach on bid and ask side """
-        price_widening_factor = 0.0001  # 1 basis point price widening if not enough depth
         bid_vwap, ask_vwap = [], []
         bid_size, ask_size = [], []
         bid_price_cols = [f"bids[{level}].price" for level in range(5)]
@@ -240,9 +240,9 @@ class OrderbookDeribitMDManager(DeribitMDManager):
                     
                     if cumulative_bid_volume < target_volume:
                         if bid_invalid_level:
-                            bid_vwap.append(row[bid_price_cols[bid_invalid_level-1]] * (1 - price_widening_factor))
+                            bid_vwap.append(row[bid_price_cols[bid_invalid_level-1]] * (1 - self.price_widening_factor))
                         else:
-                            bid_vwap.append(row[bid_price_cols[i]] * (1 - price_widening_factor))  # row[i] is None
+                            bid_vwap.append(row[bid_price_cols[i]] * (1 - self.price_widening_factor))  # row[i] is None
                     else:
                         bid_vwap.append(row[bid_price_cols[i]])
                     bid_size.append(min(target_volume, cumulative_bid_volume))
@@ -259,9 +259,9 @@ class OrderbookDeribitMDManager(DeribitMDManager):
 
                     if cumulative_ask_volume < target_volume:
                         if ask_invalid_level:
-                            ask_vwap.append(row[ask_price_cols[ask_invalid_level-1]] * (1 + price_widening_factor))
+                            ask_vwap.append(row[ask_price_cols[ask_invalid_level-1]] * (1 + self.price_widening_factor))
                         else:
-                            ask_vwap.append(row[ask_price_cols[i]] * (1 + price_widening_factor))
+                            ask_vwap.append(row[ask_price_cols[i]] * (1 + self.price_widening_factor))
                     else:
                         ask_vwap.append(row[ask_price_cols[i]])
                     ask_size.append(min(target_volume, cumulative_ask_volume))
