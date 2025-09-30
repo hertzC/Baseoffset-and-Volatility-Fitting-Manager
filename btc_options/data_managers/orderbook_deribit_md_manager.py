@@ -209,7 +209,10 @@ class OrderbookDeribitMDManager(DeribitMDManager):
         # Use parent's conflation logic but with our extended columns
         df = super()._get_conflated_md(parsed_lazy_df, freq, period)
         df = self.normalize_volume_to_btc(df)
-        return self.enrich_conflated_md(self.join_symbol_info(df))
+        
+        # Join symbol information and enrich (inline the removed join_symbol_info method)
+        df = df.join(self.df_symbol, on='symbol', how='left')
+        return self.enrich_conflated_md(df)
     
     def get_volume_targeted_price(self, df: pl.DataFrame, target_btc: int) -> tuple[list, list, list, list]:
         """ given the target number of coins, how much depth can we reach on bid and ask side """

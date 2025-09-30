@@ -1,8 +1,6 @@
 """
-Weighted Least Squares Regressor
-
-Implements weighted least squares regression for put-call parity analysis.
-Extracts USD and BTC interest rates from Bitcoin options pricing data.
+Weighted Least Squares Regressor for Bitcoin options put-call parity analysis.
+Extracts USD and BTC interest rates from options pricing data.
 """
 
 from typing import TypedDict
@@ -41,34 +39,15 @@ class WLSRegressor:
         if self._can_print:
             print(msg)
 
-    def construct_inputs(self, df: pl.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Construct inputs for regression from option synthetic data.
-        
-        Args:
-            df: Option synthetic DataFrame
-            
-        Returns:
-            Tuple of (y, X_with_const, weights)
-        """
-        y = df["mid"].to_numpy()
-        X = df["strike"].to_numpy()
-        weight = 1 / df["spread"].to_numpy()
-        weight *= weight  # Square weights for WLS
-        X_with_const = sm.add_constant(X)
-        return y, X_with_const, weight
-
     def fit(self, df: pl.DataFrame, **kwargs) -> Result:
         """
         Fit put-call parity regression to extract interest rates.
         
-        The regression solves: P - C = K*exp(-r*t) - S*exp(-q*t)
+        Solves: P - C = K*exp(-r*t) - S*exp(-q*t)
         Linearized as: y = a*K + b, where a = exp(-r*t), b = -S*exp(-q*t)
         
         Args:
-            df: Option synthetic data
-            prev_const: Previous constant (for warm starts)
-            prev_coef: Previous coefficient (for warm starts)
+            df: Option synthetic data with columns: 'mid', 'strike', 'spread', 'S', 'tau'
             
         Returns:
             Result dictionary with fitted parameters and derived rates
@@ -76,51 +55,38 @@ class WLSRegressor:
         if df.is_empty():
             raise ValueError("DataFrame is empty. Cannot fit model.")
             
-        y, X_with_const, w = self.construct_inputs(df)
-        model = sm.WLS(y, X_with_const, weights=w).fit()
+        # Extract data and construct regression inputs
+        y = df["mid"].to_numpy()
+        X = df["strike"].to_numpy()
+        weight = 1 / df["spread"].to_numpy()
+        weight = weight * weight  # Square weights for WLS
+        X_with_const = sm.add_constant(X)
+        
+        # Fit weighted least squares
+        model = sm.WLS(y, X_with_const, weights=weight).fit()
         self.own_print(model.summary())
         
-        return self.get_result_from_optimization(
-            model.params[0], model.params[1], 
-            df["S"][0], df["tau"][0], 
-            float(model.rsquared_adj), float(model.ssr)
-        )
-
-    def get_result_from_optimization(self, const: float, coef: float, S: float, 
-                                   tau: float, r2_adj: float, sse: float) -> Result:
-        """
-        Convert regression parameters to financial rates and metrics.
+        # Convert parameters to financial rates
+        const, coef = model.params[0], model.params[1]
+        S, tau = df["S"][0], df["tau"][0]
+        r2_adj, sse = float(model.rsquared_adj), float(model.ssr)
         
-        Args:
-            const: Regression constant (-S*exp(-q*t))
-            coef: Regression coefficient (exp(-r*t))
-            S: Spot price
-            tau: Time to expiry
-            r2_adj: Adjusted R-squared
-            sse: Sum of squared errors
-            
-        Returns:
-            Result dictionary with derived financial parameters
-        """
-        # Calculate raw rates from regression parameters
+        return self._convert_to_result(const, coef, S, tau, r2_adj, sse)
+
+    def _convert_to_result(self, const: float, coef: float, S: float, 
+                          tau: float, r2_adj: float, sse: float) -> Result:
+        """Convert regression parameters to financial rates and metrics."""
+        # Calculate rates from regression parameters
         r = float(np.log(coef) / -tau)  # USD interest rate
         q = float(np.log(-const / S) / -tau)  # BTC funding rate
         
-        # Recalculate derived metrics with rates
+        # Calculate derived metrics
         discount_rate = float(np.exp((r - q) * tau))
-        implied_F = round(discount_rate * S, 3)  # Forward price
-        base_offset = implied_F - S
+        forward_price = round(discount_rate * S, 3)
+        base_offset = forward_price - S
         
         return Result(
-            S=S,
-            F=implied_F,
-            r=r,
-            q=q,
-            tau=tau,
-            discount_rate=discount_rate,
-            base_offset=base_offset,
-            r2=r2_adj,
-            const=float(const),
-            coef=float(coef),
-            sse=float(sse)
+            S=S, F=forward_price, r=r, q=q, tau=tau,
+            discount_rate=discount_rate, base_offset=base_offset,
+            r2=r2_adj, const=float(const), coef=float(coef), sse=float(sse)
         )

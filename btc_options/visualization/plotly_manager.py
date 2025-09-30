@@ -190,48 +190,41 @@ class PlotlyManager:
         )
         self._safe_show(fig)
 
-    def plot_time_series_results(self, df_results: pl.DataFrame, metric: str = 'r-q'):
+    def plot_time_series_analysis(self, df_results: pl.DataFrame, metric: str = None) -> None:
         """
-        Plot time series of fitted parameters across expiries.
+        Create time series plots for forward prices and rate analysis.
         
         Args:
-            df_results: DataFrame with fitted results over time
-            metric: Metric to plot ('r-q', 'r', 'q', 'F', etc.)
-        """
-        fig = make_subplots(specs=[[{"secondary_y": True}]])
-        
-        # Plot each expiry as separate trace
-        for expiry in df_results['expiry'].unique():
-            expiry_data = df_results.filter(pl.col('expiry') == expiry)
-            fig.add_trace(go.Scatter(
-                x=expiry_data["timestamp"], 
-                y=expiry_data[metric], 
-                name=f'{expiry}', 
-                mode='lines'
-            ))
-
-        fig.update_layout(
-            title=dict(text=f'{metric} across different expiries'),
-            yaxis_zeroline=False,
-            xaxis_zeroline=False,
-            xaxis=dict(title='Time'),
-            yaxis=dict(title=metric),
-            width=675, height=450,
-        )
-        self._safe_show(fig)
-
-    def plot_time_series_analysis(self, df_results: pl.DataFrame) -> None:
-        """
-        Create comprehensive time series plots for forward prices and rate analysis.
-        
-        Args:
-            df_results: DataFrame containing time series results with columns:
-                       ['expiry', 'timestamp', 'r', 'q', 'F', 'r2', etc.]
+            df_results: DataFrame containing time series results
+            metric: Single metric to plot, or None for comprehensive multi-panel view
         """
         if df_results.is_empty():
             print("❌ No data available for time series plotting")
             return
             
+        # Single metric plot
+        if metric:
+            fig = make_subplots(specs=[[{"secondary_y": True}]])
+            
+            for expiry in df_results['expiry'].unique():
+                expiry_data = df_results.filter(pl.col('expiry') == expiry)
+                fig.add_trace(go.Scatter(
+                    x=expiry_data["timestamp"], 
+                    y=expiry_data[metric], 
+                    name=f'{expiry}', 
+                    mode='lines'
+                ))
+
+            fig.update_layout(
+                title=dict(text=f'{metric} across different expiries'),
+                yaxis_zeroline=False, xaxis_zeroline=False,
+                xaxis=dict(title='Time'), yaxis=dict(title=metric),
+                width=675, height=450,
+            )
+            self._safe_show(fig)
+            return
+            
+        # Multi-panel comprehensive analysis
         print("📊 CREATING TIME SERIES PLOTS")
         
         try:
@@ -255,7 +248,7 @@ class PlotlyManager:
             
             print(f"Plotting {len(expiries)} expiries")
             
-            # Create simple subplots
+            # Create 4-panel subplot
             fig = make_subplots(
                 rows=2, cols=2,
                 subplot_titles=(
@@ -266,138 +259,111 @@ class PlotlyManager:
                 horizontal_spacing=0.1
             )
             
-            # Plot 1: Forward prices
+            # Add traces for each panel
             for i, exp in enumerate(expiries):
                 exp_data = df_plot.filter(pl.col('expiry') == exp)
+                
+                # Panel 1: Forward prices
                 fig.add_trace(
                     go.Scatter(
                         x=exp_data['timestamp'].to_list(),
                         y=exp_data['F'].to_list(),
-                        mode='lines',
-                        name=exp,
-                        line=dict(color=colors[i], width=2),
-                        legendgroup=exp
-                    ),
-                    row=1, col=1
+                        mode='lines', name=exp, line=dict(color=colors[i], width=2),
+                        legendgroup=exp, showlegend=(i == 0)
+                    ), row=1, col=1
                 )
-            
-            # Plot 2: Rate spread
-            for i, exp in enumerate(expiries):
-                exp_data = df_plot.filter(pl.col('expiry') == exp)
+                
+                # Panel 2: Rate spread
                 fig.add_trace(
                     go.Scatter(
                         x=exp_data['timestamp'].to_list(),
                         y=exp_data['r_minus_q'].to_list(),
-                        mode='lines',
-                        name=f'{exp} r-q',
-                        line=dict(color=colors[i], width=2),
-                        legendgroup=exp,
-                        showlegend=False
-                    ),
-                    row=1, col=2
+                        mode='lines', line=dict(color=colors[i], width=2),
+                        legendgroup=exp, showlegend=False
+                    ), row=1, col=2
                 )
-            
-            # Plot 3: Base offset
-            for i, exp in enumerate(expiries):
-                exp_data = df_plot.filter(pl.col('expiry') == exp)
+                
+                # Panel 3: Base offset
                 fig.add_trace(
                     go.Scatter(
                         x=exp_data['timestamp'].to_list(),
                         y=exp_data['base_offset'].to_list(),
-                        mode='lines',
-                        name=f'{exp} offset',
-                        line=dict(color=colors[i], width=2),
-                        legendgroup=exp,
-                        showlegend=False
-                    ),
-                    row=2, col=1
+                        mode='lines', line=dict(color=colors[i], width=2),
+                        legendgroup=exp, showlegend=False
+                    ), row=2, col=1
                 )
-            
-            # Plot 4: Individual rates (simplified - just show first 3 expiries)
-            for i, exp in enumerate(expiries[:3]):  # Limit to avoid overcrowding
-                exp_data = df_plot.filter(pl.col('expiry') == exp)
-                # USD rate
+                
+                # Panel 4: USD vs BTC rates
                 fig.add_trace(
                     go.Scatter(
-                        x=exp_data['timestamp'].to_list(),
-                        y=exp_data['r'].to_list(),
-                        mode='lines',
-                        name=f'{exp} USD',
-                        line=dict(color=colors[i], width=2),
-                        legendgroup=exp,
-                        showlegend=False
-                    ),
-                    row=2, col=2
-                )
-                # BTC rate
-                fig.add_trace(
-                    go.Scatter(
-                        x=exp_data['timestamp'].to_list(),
+                        x=exp_data['r'].to_list(),
                         y=exp_data['q'].to_list(),
-                        mode='lines',
-                        name=f'{exp} BTC',
-                        line=dict(color=colors[i], width=1, dash='dash'),
-                        legendgroup=exp,
-                        showlegend=False
-                    ),
-                    row=2, col=2
+                        mode='markers', marker=dict(color=colors[i], size=6),
+                        legendgroup=exp, showlegend=False
+                    ), row=2, col=2
                 )
-            
-            # Update layout
+
             fig.update_layout(
-                title=f'Bitcoin Options Time Series - {self.date_str}',
-                width=900,
-                height=700,
-                showlegend=True
+                title=f'Bitcoin Options Analysis - {self.date_str}',
+                height=800, width=1200, font=dict(size=11)
             )
             
-            # Show the figure
-            fig.show()
+            # Update axis labels
+            fig.update_xaxes(title_text="Time", row=1, col=1)
+            fig.update_xaxes(title_text="Time", row=1, col=2) 
+            fig.update_xaxes(title_text="Time", row=2, col=1)
+            fig.update_xaxes(title_text="USD Rate (r)", row=2, col=2)
             
-            # Print summary
-            print(f"✅ Time series plots created successfully")
-            print(f"   Forward Price Range: ${df_plot['F'].min():.2f} - ${df_plot['F'].max():.2f}")
-            print(f"   Rate Spread Range: {df_plot['r_minus_q'].min():.4f} - {df_plot['r_minus_q'].max():.4f}")
-            print(f"   Base Offset Range: ${df_plot['base_offset'].min():.2f} - ${df_plot['base_offset'].max():.2f}")
+            fig.update_yaxes(title_text="Forward ($)", row=1, col=1)
+            fig.update_yaxes(title_text="r-q", row=1, col=2)
+            fig.update_yaxes(title_text="Basis ($)", row=2, col=1)
+            fig.update_yaxes(title_text="BTC Rate (q)", row=2, col=2)
+            
+            self._safe_show(fig)
+            print("✅ Time series plots created successfully")
             
         except Exception as e:
-            print(f"❌ Error in time series plotting: {e}")
-            print(f"Error type: {type(e).__name__}")
-            import traceback
-            traceback.print_exc()
-    
-    def _print_time_series_summary(self, df_plot: pl.DataFrame) -> None:
-        """Print comprehensive summary statistics for time series data."""
-        print(f"\n📈 TIME SERIES SUMMARY:")
-        print(f"   Forward Price Range: ${df_plot['F'].min():.2f} - ${df_plot['F'].max():.2f}")
-        print(f"   Average Forward Price: ${df_plot['F'].mean():.2f}")
-        print(f"   Rate Spread Range: {df_plot['r_minus_q'].min():.4f} - {df_plot['r_minus_q'].max():.4f}")
-        print(f"   Average Rate Spread: {df_plot['r_minus_q'].mean():.4f}")
-        print(f"   Base Offset Range: ${df_plot['base_offset'].min():.2f} - ${df_plot['base_offset'].max():.2f}")
-        print(f"   Time Range: {df_plot['timestamp'].min().strftime('%H:%M')} - {df_plot['timestamp'].max().strftime('%H:%M')}")
+            print(f"❌ Error creating time series plots: {e}")
+
+    def plot_term_structure(self, df_results: pl.DataFrame, target_datetime) -> None:
+        """
+        Plot term structure of basis across expiries for a given datetime.
         
-        # Summary by expiry
-        summary_stats = (df_plot
-            .group_by('expiry')
-            .agg([
-                pl.col('F').mean().alias('avg_forward'),
-                pl.col('base_offset').mean().alias('avg_base_offset'),
-                pl.col('r').mean().alias('avg_r'),
-                pl.col('q').mean().alias('avg_q'),
-                pl.col('r_minus_q').mean().alias('avg_rate_spread'),
-                pl.col('r2').mean().alias('avg_r2')
-            ])
-            .sort('expiry')
+        Args:
+            df_results: Results DataFrame with basis calculations
+            target_datetime: Specific datetime to analyze
+        """
+        # Filter for specific datetime and calculate basis
+        filtered_data = df_results.filter(pl.col('timestamp') == target_datetime)
+        
+        if filtered_data.is_empty():
+            print(f"❌ No data found for datetime {target_datetime}")
+            return
+            
+        # Add time to expiry calculation
+        plot_data = filtered_data.with_columns([
+            (pl.col('F') - 62000).alias('basis'),  # Assuming 62k spot reference
+            pl.col('expiry').alias('maturity')
+        ]).sort('expiry')
+        
+        fig = go.Figure()
+        
+        # Add basis term structure
+        fig.add_trace(go.Scatter(
+            x=plot_data['maturity'].to_list(),
+            y=plot_data['basis'].to_list(),
+            mode='lines+markers',
+            name='Basis',
+            line=dict(color='blue', width=3),
+            marker=dict(size=8, color='red')
+        ))
+        
+        fig.update_layout(
+            title=f'Basis Term Structure - {target_datetime}',
+            xaxis_title='Expiry',
+            yaxis_title='Basis ($)',
+            width=675, height=450
         )
         
-        print(f"\n📊 ANALYSIS BY EXPIRY:")
-        for row in summary_stats.iter_rows(named=True):
-            print(f"   {row['expiry']}: Forward=${row['avg_forward']:7.2f}, "
-                  f"Base Offset=${row['avg_base_offset']:6.2f} | "
-                  f"r={row['avg_r']:6.4f}, q={row['avg_q']:6.4f}, "
-                  f"r-q={row['avg_rate_spread']:6.4f} | R²={row['avg_r2']:.3f}")
-        
-        print(f"\n🔍 MARKET INSIGHTS:")
-        print(f"   Average Fit Quality (R²): {df_plot['r2'].mean():.3f}")
-        print(f"   Number of Expiries: {len(df_plot['expiry'].unique())}")
-        print(f"   Total Data Points: {len(df_plot)}")
+        self._safe_show(fig)
+        print(f"✅ Term structure plot created for {target_datetime}")

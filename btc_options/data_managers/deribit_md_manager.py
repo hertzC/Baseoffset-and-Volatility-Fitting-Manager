@@ -105,9 +105,13 @@ class DeribitMDManager:
         """
         parsed_lazy_df = self.with_parsed_timestamps(self.lazy_df)
         df = self._get_conflated_md(parsed_lazy_df, freq, period)
-        return self.enrich_conflated_md(self.join_symbol_info(df))
+        
+        # Join symbol information and enrich
+        df = df.join(self.df_symbol, on='symbol', how='left')
+        return self.enrich_conflated_md(df)
 
     def _get_conflated_md(self, parsed_lazy_df: pl.LazyFrame, freq: str, period: str) -> pl.DataFrame:
+        """Internal method for conflation that can be overridden by subclasses."""
         return parsed_lazy_df.group_by_dynamic(
             every=freq,
             period=period,
@@ -117,10 +121,6 @@ class DeribitMDManager:
         ).agg(
             [pl.col(col).last().alias(col) for col in self.get_conflation_columns()]
         ).collect().sort(['timestamp', 'symbol'])
-
-    def join_symbol_info(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Join symbol information to market data."""
-        return df.join(self.df_symbol, on='symbol', how='left')
 
     def enrich_conflated_md(self, df: pl.DataFrame) -> pl.DataFrame:
         """
@@ -175,22 +175,6 @@ class DeribitMDManager:
         """Check if expiry corresponds to a futures contract."""
         return expiry in self.fut_expiries
 
-    def find_options(self, df: pl.DataFrame, expiry: str, timestamp: datetime, is_call: bool) -> pl.DataFrame:
-        """
-        Find options of specific type (call/put) for given expiry and timestamp.
-        
-        Args:
-            df: Market data DataFrame
-            expiry: Option expiry
-            timestamp: Analysis timestamp
-            is_call: True for calls, False for puts
-            
-        Returns:
-            Filtered DataFrame with options of specified type
-        """
-        df = df.filter(pl.col("expiry").is_in([expiry]), pl.col("timestamp") == timestamp)
-        return df.filter(pl.col("is_call")) if is_call else df.filter(pl.col("is_put"))
-
     def get_option_chain(self, df: pl.DataFrame, expiry: str, timestamp: datetime) -> pl.DataFrame:
         """
         Construct option chain by joining calls and puts on strike.
@@ -203,8 +187,10 @@ class DeribitMDManager:
         Returns:
             Option chain DataFrame with call and put data joined by strike
         """
-        calls = self.find_options(df, expiry=expiry, timestamp=timestamp, is_call=True)
-        puts = self.find_options(df, expiry=expiry, timestamp=timestamp, is_call=False)
+        # Filter and get calls and puts for this expiry/timestamp
+        filtered_df = df.filter(pl.col("expiry").is_in([expiry]), pl.col("timestamp") == timestamp)
+        calls = filtered_df.filter(pl.col("is_call"))
+        puts = filtered_df.filter(pl.col("is_put"))
 
         # Build column lists dynamically based on available columns
         base_call_cols = ['timestamp','bid_price','ask_price','strike']
@@ -273,43 +259,7 @@ class DeribitMDManager:
             
         return result.select(base_columns).sort('strike')
 
-    def apply_monotonicity(self, 
-                          bid_price_call: np.ndarray, 
-                          ask_price_call: np.ndarray, 
-                          bid_price_put: np.ndarray, 
-                          ask_price_put: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Apply monotonicity constraints to option prices.
-        
-        Call prices should decrease monotonically with strike.
-        Put prices should increase monotonically with strike.
-        
-        Args:
-            bid_price_call: Call bid prices
-            ask_price_call: Call ask prices  
-            bid_price_put: Put bid prices
-            ask_price_put: Put ask prices
-            
-        Returns:
-            Tuple of adjusted prices maintaining monotonicity
-        """
-        # Call prices: bids decrease, asks increase with strike (for maximum/minimum respectively)
-        modified_bid_call = np.maximum.accumulate(bid_price_call[::-1], axis=0)[::-1]
-        
-        ask_price_call[ask_price_call == 0] = np.inf
-        modified_ask_call = np.minimum.accumulate(ask_price_call, axis=0)
-        modified_ask_call[modified_ask_call == np.inf] = 0
-        
-        # Put prices: bids increase, asks decrease with strike  
-        modified_bid_put = np.maximum.accumulate(bid_price_put, axis=0)
-        
-        ask_price_put[ask_price_put == 0] = np.inf
-        modified_ask_put = np.minimum.accumulate(ask_price_put[::-1], axis=0)[::-1]
-        modified_ask_put[modified_ask_put == np.inf] = 0
-        
-        return modified_bid_call, modified_ask_call, modified_bid_put, modified_ask_put
-
-    def apply_spread_no_arbitrage(self,
+    def _apply_option_constraints(self, 
                                  bid_price_call: np.ndarray, 
                                  ask_price_call: np.ndarray, 
                                  bid_price_put: np.ndarray, 
@@ -317,19 +267,33 @@ class DeribitMDManager:
                                  strike: np.ndarray,
                                  spot: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
-        Apply no-arbitrage spread constraints to prevent arbitrage. C1 - C2 <= (K2 - K1) * exp(r*T) <= K2 - K1
+        Apply monotonicity and no-arbitrage constraints to option prices.
         
         Args:
-            bid_price_call: Call bid prices
-            ask_price_call: Call ask prices
-            bid_price_put: Put bid prices  
-            ask_price_put: Put ask prices
+            bid_price_call, ask_price_call: Call bid/ask prices
+            bid_price_put, ask_price_put: Put bid/ask prices
             strike: Strike prices array
             spot: Spot price
             
         Returns:
-            Tuple of prices with no-arbitrage constraints applied
+            Tuple of adjusted prices with constraints applied
         """
+        # Step 1: Apply monotonicity constraints
+        # Call prices: bids decrease, asks increase with strike
+        bid_price_call = np.maximum.accumulate(bid_price_call[::-1], axis=0)[::-1]
+        
+        ask_price_call[ask_price_call == 0] = np.inf
+        ask_price_call = np.minimum.accumulate(ask_price_call, axis=0)
+        ask_price_call[ask_price_call == np.inf] = 0
+        
+        # Put prices: bids increase, asks decrease with strike  
+        bid_price_put = np.maximum.accumulate(bid_price_put, axis=0)
+        
+        ask_price_put[ask_price_put == 0] = np.inf
+        ask_price_put = np.minimum.accumulate(ask_price_put[::-1], axis=0)[::-1]
+        ask_price_put[ask_price_put == np.inf] = 0
+        
+        # Step 2: Apply no-arbitrage spread constraints
         # Forward pass (increasing strike)
         for i in range(1, len(strike)):
             bid_price_call[i] = max(bid_price_call[i], bid_price_call[i-1] - (strike[i] - strike[i-1]) / spot)
@@ -357,20 +321,12 @@ class DeribitMDManager:
         if df.is_empty():
             return df
             
-        # Apply monotonicity first
-        modified_bid_call, modified_ask_call, modified_bid_put, modified_ask_put = self.apply_monotonicity(
+        # Apply both monotonicity and no-arbitrage constraints
+        final_bid_call, final_ask_call, final_bid_put, final_ask_put = self._apply_option_constraints(
             df['bid_price'].to_numpy().copy(),
             df['ask_price'].to_numpy().copy(),
             df['bid_price_P'].to_numpy().copy(),
-            df['ask_price_P'].to_numpy().copy()
-        )
-        
-        # Apply no-arbitrage constraints
-        final_bid_call, final_ask_call, final_bid_put, final_ask_put = self.apply_spread_no_arbitrage(
-            modified_bid_call.copy(), 
-            modified_ask_call.copy(), 
-            modified_bid_put.copy(), 
-            modified_ask_put.copy(), 
+            df['ask_price_P'].to_numpy().copy(),
             strike=df['strike'].to_numpy().copy(), 
             spot=df['S'].drop_nulls()[0]
         )
@@ -380,10 +336,6 @@ class DeribitMDManager:
             old_ask_price=pl.col('ask_price'),
             old_bid_price_P=pl.col('bid_price_P'),
             old_ask_price_P=pl.col('ask_price_P'),
-            int_bid_price=modified_bid_call,
-            int_ask_price=modified_ask_call,
-            int_bid_price_P=modified_bid_put,
-            int_ask_price_P=modified_ask_put,
             bid_price=final_bid_call,  
             ask_price=final_ask_call, 
             bid_price_P=final_bid_put, 
