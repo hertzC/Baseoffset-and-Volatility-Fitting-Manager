@@ -95,13 +95,8 @@ class OrderbookDeribitMDManager(DeribitMDManager):
             pl.col(bid_amount_col).alias('bid_size'),
             pl.col(ask_amount_col).alias('ask_size'),
             pl.col('index_price')  # Keep index_price for volume normalization
-        ]).filter(
-            # Filter out rows where prices are null or zero
-            (pl.col('bid_price').is_not_null()) & 
-            (pl.col('ask_price').is_not_null()) &
-            (pl.col('bid_price') > 0) & 
-            (pl.col('ask_price') > 0)
-        )
+        ])
+        # Note: Removed filtering for null/zero prices to preserve empty orderbook entries
         
         print(f"✅ Converted {len(df_orderbook)} orderbook rows to {len(bbo_data)} BBO rows")
         
