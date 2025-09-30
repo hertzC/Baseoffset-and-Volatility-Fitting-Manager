@@ -8,6 +8,8 @@ then behaves exactly like the standard DeribitMDManager.
 
 import numpy as np
 import polars as pl
+
+from .orderbook_helper import get_volume_targeted_price
 from .deribit_md_manager import DeribitMDManager
 
 
@@ -26,7 +28,7 @@ class OrderbookDeribitMDManager(DeribitMDManager):
     """
     CONFLATION_COLUMNS = ['bid_price', 'ask_price', 'bid_size', 'ask_size', 'index_price']
 
-    def __init__(self, df_orderbook: pl.LazyFrame, date_str: str, level: int = 0, normalize_volume: bool = True):
+    def __init__(self, df_orderbook: pl.LazyFrame, date_str: str, level: int = 0, future_min_tick: float = 0.0001, price_widening_factor: float = 0.0001, target_coin_volume: int = 1):
         """
         Initialize with order book depth data, converting to BBO format.
         
@@ -34,12 +36,12 @@ class OrderbookDeribitMDManager(DeribitMDManager):
             df_orderbook: LazyFrame containing order book depth data
             date_str: Date string in YYYYMMDD format
             level: Which orderbook level to use (0=best, 1=second best, etc.)
-            normalize_volume: Whether to normalize USD volumes to BTC for futures/perpetuals
         """
         super().__init__(df_orderbook, date_str)
         self.num_of_level = level  # Store the order book level used
-        self.future_min_tick = 0.0001  # Minimum tick size for Deribit futures and perpetuals
-        self.price_widening_factor = 0.0001  # 1 basis point price widening if not enough depth
+        self.future_min_tick = future_min_tick  # Minimum tick size for Deribit futures and perpetuals
+        self.price_widening_factor = price_widening_factor  # 1 basis point price widening if not enough depth
+        self.target_coin_volume = target_coin_volume  # Target coin volume for VWAP calculation
 
     @staticmethod
     def convert_orderbook_to_bbo(df_orderbook: pl.DataFrame, level: int = 0) -> pl.DataFrame:
@@ -184,7 +186,7 @@ class OrderbookDeribitMDManager(DeribitMDManager):
         temp_delta_one = self.lazy_df.filter(
             ~pl.col("symbol").str.ends_with("-C") & ~pl.col("symbol").str.ends_with("-P")
         ).collect()
-        bid_vwap, ask_vwap, bid_size, ask_size = self.get_volume_targeted_price(temp_delta_one, target_btc=1)
+        bid_vwap, ask_vwap, bid_size, ask_size = get_volume_targeted_price(temp_delta_one, target_btc=self.target_coin_volume, price_widening_factor=self.price_widening_factor)
         temp_delta_one =\
         temp_delta_one.with_columns(
             bid_price = np.array(bid_vwap, dtype=np.float64),
@@ -209,66 +211,6 @@ class OrderbookDeribitMDManager(DeribitMDManager):
         df = df.join(self.df_symbol, on='symbol', how='left')
         return self.enrich_conflated_md(df)
     
-    def get_volume_targeted_price(self, df: pl.DataFrame, target_btc: int) -> tuple[list, list, list, list]:
-        """ given the target number of coins, how much depth can we reach on bid and ask side """
-        bid_vwap, ask_vwap = [], []
-        bid_size, ask_size = [], []
-        bid_price_cols = [f"bids[{level}].price" for level in range(5)]
-        bid_amount_cols = [f"bids[{level}].amount" for level in range(5)]
-        ask_price_cols = [f"asks[{level}].price" for level in range(5)]
-        ask_amount_cols = [f"asks[{level}].amount" for level in range(5)]
-        try:
-            for row in df.iter_rows(named=True):
-                if row['index_price'] is None or row['bids[0].price'] is None or row['asks[0].price'] is None:
-                    bid_vwap.append(None)
-                    ask_vwap.append(None)
-                    bid_size.append(None)
-                    ask_size.append(None)
-                else:
-                    target_volume = target_btc * row['index_price']
-                    cumulative_bid_volume = 0
-                    bid_invalid_level = None
-                    for i in range(5):
-                        if row[bid_amount_cols[i]] is None:
-                            bid_invalid_level = i
-                            break
-                        cumulative_bid_volume += row[bid_amount_cols[i]]
-                        if cumulative_bid_volume >= target_volume:
-                            break
-                    
-                    if cumulative_bid_volume < target_volume:
-                        if bid_invalid_level:
-                            bid_vwap.append(row[bid_price_cols[bid_invalid_level-1]] * (1 - self.price_widening_factor))
-                        else:
-                            bid_vwap.append(row[bid_price_cols[i]] * (1 - self.price_widening_factor))  # row[i] is None
-                    else:
-                        bid_vwap.append(row[bid_price_cols[i]])
-                    bid_size.append(min(target_volume, cumulative_bid_volume))
-
-                    cumulative_ask_volume = 0
-                    ask_invalid_level = None
-                    for i in range(5):
-                        if row[ask_amount_cols[i]] is None:
-                            ask_invalid_level = i
-                            break
-                        cumulative_ask_volume += row[ask_amount_cols[i]]
-                        if cumulative_ask_volume >= target_volume:
-                            break
-
-                    if cumulative_ask_volume < target_volume:
-                        if ask_invalid_level:
-                            ask_vwap.append(row[ask_price_cols[ask_invalid_level-1]] * (1 + self.price_widening_factor))
-                        else:
-                            ask_vwap.append(row[ask_price_cols[i]] * (1 + self.price_widening_factor))
-                    else:
-                        ask_vwap.append(row[ask_price_cols[i]])
-                    ask_size.append(min(target_volume, cumulative_ask_volume))
-        except Exception as e:
-            print(f"⚠️  Error calculating volume-targeted prices: {e}, row={i}")
-            return [], [], [], []
-        return bid_vwap, ask_vwap, bid_size, ask_size
-
-
     def with_parsed_timestamps(self, lazy_df: pl.LazyFrame) -> pl.LazyFrame:
         """
         Parse timestamps for orderbook data format.

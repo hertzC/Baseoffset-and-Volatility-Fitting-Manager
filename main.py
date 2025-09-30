@@ -13,7 +13,6 @@ Main components:
 """
 
 import polars as pl
-import numpy as np
 from datetime import datetime, timedelta
 import os
 import sys
@@ -276,11 +275,9 @@ def main():
         # Initialize symbol manager with appropriate class
         if use_orderbook_data:
             orderbook_level = 0  # Use best bid/ask (level 0)
-            normalize_volume = True  # Normalize USD volumes to BTC for futures/perpetuals
             print(f"🔧 Using OrderbookDeribitMDManager for orderbook data conversion")
             print(f"   - Level: {orderbook_level} ({'best' if orderbook_level == 0 else f'{orderbook_level}th best'})")
-            print(f"   - Volume normalization: {'enabled' if normalize_volume else 'disabled'}")
-            symbol_manager = OrderbookDeribitMDManager(df_market_updates, date_str, level=orderbook_level, normalize_volume=normalize_volume)
+            symbol_manager = OrderbookDeribitMDManager(df_market_updates, date_str, level=orderbook_level)
         else:
             print("🔧 Using standard DeribitMDManager for BBO data")
             symbol_manager = DeribitMDManager(df_market_updates, date_str)

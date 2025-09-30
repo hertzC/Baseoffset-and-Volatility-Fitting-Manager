@@ -3,25 +3,12 @@ Weighted Least Squares Regressor for Bitcoin options put-call parity analysis.
 Extracts USD and BTC interest rates from options pricing data.
 """
 
-from typing import TypedDict
 import numpy as np
 import polars as pl
+from btc_options.analytics import Result
 import statsmodels.api as sm
 
 
-class Result(TypedDict):
-    """Result dictionary for regression fitting."""
-    S: float
-    F: float           # fitted forward price
-    r: float           # USD interest rate
-    q: float           # BTC funding rate
-    tau: float         # time to expiry
-    discount_rate: float
-    base_offset: float
-    r2: float
-    const: float
-    coef: float        # regression coefficients
-    sse: float         # sum of squared errors
 
 
 class WLSRegressor:

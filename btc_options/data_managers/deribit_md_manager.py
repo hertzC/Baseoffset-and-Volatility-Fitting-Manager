@@ -112,7 +112,7 @@ class DeribitMDManager:
 
     def _get_conflated_md(self, parsed_lazy_df: pl.LazyFrame, freq: str, period: str) -> pl.DataFrame:
         """Internal method for conflation that can be overridden by subclasses."""
-        return parsed_lazy_df.group_by_dynamic(
+        return parsed_lazy_df.sort('timestamp').group_by_dynamic(
             every=freq,
             period=period,
             index_column="timestamp",

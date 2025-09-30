@@ -6,9 +6,10 @@ Extends WLS regression with constrained optimization when futures data is availa
 from typing import Any
 import numpy as np
 import polars as pl
+from btc_options.analytics import Result
 from scipy.optimize import minimize
 
-from .weight_least_square_regressor import WLSRegressor, Result
+from .weight_least_square_regressor import WLSRegressor
 
 
 class NonlinearMinimization(WLSRegressor):
