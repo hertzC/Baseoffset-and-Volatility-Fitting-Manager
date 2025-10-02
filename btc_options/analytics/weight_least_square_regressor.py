@@ -3,28 +3,26 @@ Weighted Least Squares Regressor for Bitcoin options put-call parity analysis.
 Extracts USD and BTC interest rates from options pricing data.
 """
 
+from datetime import time
+from typing import Union
 import numpy as np
 import polars as pl
 from btc_options.analytics import Result
+from btc_options.analytics.fitter import Fitter
+from btc_options.data_managers.deribit_md_manager import DeribitMDManager
+from btc_options.data_managers.orderbook_deribit_md_manager import OrderbookDeribitMDManager
 import statsmodels.api as sm
 
 
-
-
-class WLSRegressor:
+class WLSRegressor(Fitter):
     """Weighted Least Squares regressor for put-call parity analysis."""
     
-    def __init__(self):
-        self._can_print = False
-
-    def set_printable(self, value: bool):
-        """Enable/disable print output."""
-        self._can_print = value
-
-    def own_print(self, msg: str):
-        """Print message if printing is enabled."""
-        if self._can_print:
-            print(msg)
+    def __init__(self, 
+                 symbol_manager: Union[DeribitMDManager, OrderbookDeribitMDManager],
+                 minimum_strikes: int = 5, 
+                 cutoff_time_for_0DTE: time = time(hour=4)
+                ):
+        super().__init__(symbol_manager, minimum_strikes, cutoff_time_for_0DTE)
 
     def fit(self, df: pl.DataFrame, **kwargs) -> Result:
         """
@@ -41,39 +39,29 @@ class WLSRegressor:
         """
         if df.is_empty():
             raise ValueError("DataFrame is empty. Cannot fit model.")
-            
-        # Extract data and construct regression inputs
-        y = df["mid"].to_numpy()
-        X = df["strike"].to_numpy()
-        weight = 1 / df["spread"].to_numpy()
-        weight = weight * weight  # Square weights for WLS
-        X_with_const = sm.add_constant(X)
-        
-        # Fit weighted least squares
-        model = sm.WLS(y, X_with_const, weights=weight).fit()
-        self.own_print(model.summary())
-        
-        # Convert parameters to financial rates
-        const, coef = model.params[0], model.params[1]
+        expiry = kwargs['expiry']
+        timestamp = kwargs['timestamp']
         S, tau = df["S"][0], df["tau"][0]
-        r2_adj, sse = float(model.rsquared_adj), float(model.ssr)
-        
-        return self._convert_to_result(const, coef, S, tau, r2_adj, sse)
 
-    def _convert_to_result(self, const: float, coef: float, S: float, 
-                          tau: float, r2_adj: float, sse: float) -> Result:
-        """Convert regression parameters to financial rates and metrics."""
-        # Calculate rates from regression parameters
-        r = float(np.log(coef) / -tau)  # USD interest rate
-        q = float(np.log(-const / S) / -tau)  # BTC funding rate
-        
-        # Calculate derived metrics
-        discount_rate = float(np.exp((r - q) * tau))
-        forward_price = round(discount_rate * S, 3)
-        base_offset = forward_price - S
-        
-        return Result(
-            S=S, F=forward_price, r=r, q=q, tau=tau,
-            discount_rate=discount_rate, base_offset=base_offset,
-            r2=r2_adj, const=float(const), coef=float(coef), sse=float(sse)
-        )
+        is_cutoff, result = self.check_if_cutoff_for_0DTE(expiry, timestamp, self.symbol_manager.is_expiry_today(expiry), S, tau)
+
+        if not is_cutoff:                
+            # Extract data and construct regression inputs
+            y = df["mid"].to_numpy()
+            X = df["strike"].to_numpy()
+            weight = 1 / df["spread"].to_numpy()
+            weight = weight * weight  # Square weights for WLS
+            X_with_const = sm.add_constant(X)
+            
+            # Fit weighted least squares
+            model = sm.WLS(y, X_with_const, weights=weight).fit()
+            self.own_print(model.summary())
+            
+            # Convert parameters to financial rates
+            const, coef = model.params[0], model.params[1]
+            r2_adj, sse = float(model.rsquared_adj), float(model.ssr)            
+
+            result = self._convert_to_result(expiry, timestamp, const, coef, S, tau, r2_adj, sse)
+
+        self.fit_results.append(result)        
+        return result

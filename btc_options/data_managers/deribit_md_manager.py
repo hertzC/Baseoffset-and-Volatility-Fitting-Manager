@@ -352,7 +352,7 @@ class DeribitMDManager:
             timestamp: Timestamp for analysis
             
         Returns:
-            Tuple of (option_chain, modified_option_chain, option_synthetic)
+            Tuple of (modified_option_chain, option_synthetic)
         """
         # Filter for the specific expiry and timestamp
         df_filtered = df.filter(pl.col("expiry") == expiry, pl.col("timestamp") == timestamp)
