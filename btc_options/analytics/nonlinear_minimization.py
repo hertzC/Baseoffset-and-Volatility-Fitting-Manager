@@ -28,7 +28,7 @@ class NonlinearMinimization(Fitter):
                  minimum_rate: float = -0.005, 
                  maximum_rate: float = 0.30,
                  minimum_strikes: int = 5, 
-                 lambda_reg: float = 0.1,
+                 lambda_reg: float = 0.00,  # control the regularization
                  cutoff_time_for_0DTE: time = time(hour=4)
                  ):
         """
@@ -50,6 +50,7 @@ class NonlinearMinimization(Fitter):
         self.r_min, self.r_max = r_min, r_max
         self.q_min, self.q_max = q_min, q_max
         self.minimum_rate, self.maximum_rate = minimum_rate, maximum_rate
+        self.lambda_reg = lambda_reg
 
     def fit(self, df: pl.DataFrame, prev_const: float, prev_coef: float, **kwargs) -> Result:
         """
@@ -93,7 +94,8 @@ class NonlinearMinimization(Fitter):
         X = df["strike"].to_numpy()
         weight = 1 / df["spread"].to_numpy()
         weight = weight * weight
-        lambda_reg = 0.00  # control the regularization
+        lambda_reg = self.lambda_reg 
+
         # Define objective function
         def objective(params):
             const, coef = params
