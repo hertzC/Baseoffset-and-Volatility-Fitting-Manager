@@ -11,6 +11,7 @@ from btc_options.analytics import Result
 from btc_options.analytics.fitter import Fitter
 from btc_options.data_managers.deribit_md_manager import DeribitMDManager
 from btc_options.data_managers.orderbook_deribit_md_manager import OrderbookDeribitMDManager
+from btc_options.analytics.maths import convert_paramter_into_rate
 from scipy.optimize import minimize
 
 
@@ -86,8 +87,7 @@ class NonlinearMinimization(Fitter):
             # Check if futures data is available
             has_futures = 'bid_price_fut' in df.columns and 'ask_price_fut' in df.columns
             if has_futures:
-                future_bid = df['bid_price_fut'][0]
-                future_ask = df['ask_price_fut'][0]
+                future_bid, future_ask = df['bid_price_fut'][0], df['ask_price_fut'][0]
                 has_futures = future_bid is not None and future_ask is not None
             else:
                 future_bid = future_ask = None
@@ -99,34 +99,37 @@ class NonlinearMinimization(Fitter):
     def _optimize(self, expiry: str, timestamp: datetime, df: pl.DataFrame, initial_guess: np.ndarray, spot: float, tau: float,
                  future_bid: float, future_ask: float, has_futures: bool) -> Result:
         """Perform the actual optimization with constraints."""
-        # Extract data for optimization
-        y = df["mid"].to_numpy()
-        X = df["strike"].to_numpy()
-        weight = 1 / df["spread"].to_numpy()
-        weight = weight * weight
-        lambda_reg = self.lambda_reg 
-
-        # Define objective function
-        def objective(params):
+        def objective(params, x, y, weight, past_params, lambda_reg, spot, tau):
             const, coef = params
-            residuals = y - (const + coef * X)
+            optimized_rate = convert_paramter_into_rate(params, spot, tau)
+            residuals = y - (const + coef * x)
             sse =  np.sum(weight * residuals**2)
-            penalty = lambda_reg * np.sum((params - initial_guess)**2)
+            penalty = lambda_reg * np.sum((optimized_rate - past_params)**2)
+            # print(f"constant={const:10.2f} coefficient={coef:8.4f} r={optimized_rate[0]:10.4f} q={optimized_rate[1]:.4f} sse={sse:18.4f} penalty={penalty:12.4f}")
             return sse + penalty
         
-        enough_strikes = (len(X) >= self.minimum_strikes)
+        enough_strikes = (df.height >= self.minimum_strikes)
         if enough_strikes:
             # Set up constraints
             constraints = self._build_constraints(spot, tau, future_bid, future_ask, has_futures)
             
             # Run optimization
-            result = minimize(
-                fun=objective, x0=initial_guess, method='SLSQP', constraints=constraints
-            )
+            initial_rate = convert_paramter_into_rate(initial_guess, spot, tau)
+            result = minimize(fun=objective, 
+                              x0=initial_guess, 
+                              args=((X:=df['strike'].to_numpy()),
+                                    (Y:=df['mid'].to_numpy()),
+                                    (weight:= (1 / df['spread'].to_numpy())**2),
+                                    initial_rate,
+                                    self.lambda_reg ,
+                                    spot,
+                                    tau),
+                              method='SLSQP', 
+                              constraints=constraints)
         
         if not enough_strikes or not result.success:
             error_msg = result.message if enough_strikes else "insufficient strikes"
-            print(f"   ⚠️ {timestamp}: optimization failed on {expiry}, Error = {error_msg}; initial_guess = {initial_guess[0]:.2f}, {initial_guess[1]:.6f}")
+            print(f"   ⚠️ {timestamp}: optimization failed on {expiry}, Error = {error_msg}; initial_guess = ({initial_guess[0]:.2f}, {initial_guess[1]:.6f}) (r={initial_guess[0]:.4f}, q={initial_guess[1]:.4f})")
             return Result(expiry=expiry,
                           timestamp=timestamp,
                           S=spot,
@@ -144,14 +147,17 @@ class NonlinearMinimization(Fitter):
         const, coef = result.x
         self.own_print("Optimization successful.")
         self.own_print(f"Optimal parameters (const, coef): {const:.6f}, {coef:.6f}")
+        
+        # Calculate rates from parameters for logging
+        r, q = convert_paramter_into_rate(result.x, spot, tau)
         self.own_print(f"Optimal parameters (r, q): {r:.6f}, {q:.6f}")
         self.own_print(f"Optimal objective value (SSE): {result.fun:.4f}")
         
         # Calculate R-squared
-        residuals = y - (const + coef * X)
+        residuals = Y - (const + coef * X)
         sse = np.sum(weight * residuals**2)
-        y_weighted_mean = np.sum(weight * y) / np.sum(weight)
-        sst = np.sum(weight * (y - y_weighted_mean)**2)
+        y_weighted_mean = np.sum(weight * Y) / np.sum(weight)
+        sst = np.sum(weight * (Y - y_weighted_mean)**2)
         r_squared = 1 - (sse / sst)
         
         return self._convert_to_result(expiry, timestamp, result.x, spot, tau, float(r_squared), float(sse))
