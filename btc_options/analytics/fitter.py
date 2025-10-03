@@ -5,6 +5,7 @@ from btc_options.analytics import Result
 from abc import ABC, abstractmethod
 import polars as pl
 
+from btc_options.analytics.maths import convert_paramter_into_rate
 from btc_options.data_managers.deribit_md_manager import DeribitMDManager
 from btc_options.data_managers.orderbook_deribit_md_manager import OrderbookDeribitMDManager
 
@@ -21,6 +22,8 @@ class Fitter(ABC):
         self.fit_results: list[Result] = []
         self.cutoff_time_for_0DTE = cutoff_time_for_0DTE
         self.symbol_manager = symbol_manager
+        # Store original parameters for reset functionality
+        self._original_params = {}
 
     def set_printable(self, value: bool):
         """Enable/disable print output."""
@@ -31,23 +34,30 @@ class Fitter(ABC):
         if self._can_print:
             print(msg)
 
+    def clear_results(self):
+        """Clear all stored fit results."""
+        self.fit_results.clear()
+        print(f"✅ Cleared {self.__class__.__name__} fit results")
+
+    def get_results_count(self) -> int:
+        """Get the number of stored fit results."""
+        return len(self.fit_results)
+
     @abstractmethod
     def fit(self, *args, **kwargs):
         """Abstract fit method to be implemented by subclasses."""
         pass
 
-    def _convert_to_result(self, expiry: str, timestamp: datetime, const: float, coef: float, S: float, 
+    def _convert_to_result(self, expiry: str, timestamp: datetime, fitted_parameter: np.ndarray, S: float, 
                           tau: float, r2_adj: float, sse: float, ) -> Result:
-        """Convert regression parameters to financial rates and metrics."""
-        # Calculate rates from regression parameters
-        r = float(np.log(coef) / -tau)  # USD interest rate
-        q = float(np.log(-const / S) / -tau)  # BTC funding rate
+        """Convert regression parameters to financial rates and metrics."""        
+        r, q = convert_paramter_into_rate(fitted_parameter, S, tau)
 
         return Result(
             expiry=expiry, timestamp=timestamp,
             S=S, r=r, q=q, tau=tau,
-            r2=r2_adj, const=float(const), coef=float(coef), sse=float(sse),
-            success_fitting=True, failure_reason=None
+            r2=r2_adj, const=float(fitted_parameter[0]), coef=float(fitted_parameter[1]), sse=float(sse),
+            success_fitting=True, failure_reason=''
         )
     
     def create_results_df(self) -> pl.DataFrame:
@@ -55,8 +65,7 @@ class Fitter(ABC):
             [pl.col(_col).round(4) for _col in ['tau','r','q','r2','sse']]
         ).with_columns(
             (pl.col('r') - pl.col('q')).alias('r-q'),
-        ).with_columns(
-            (pl.col('r-q') * pl.col('tau')).round(4).alias('(r-q)*t')
+            ((pl.col('r') - pl.col('q')) * pl.col('tau')).round(4).alias('(r-q)*t')
         ).with_columns(
             (np.exp(pl.col('(r-q)*t')) * pl.col('S')).round(2).alias('F')
         ).with_columns(
@@ -64,15 +73,13 @@ class Fitter(ABC):
             (pl.col('F') / pl.col('S') - 1).round(4).alias('F/S-1')
         ).select(
             ['expiry','timestamp','tau','r','q','r-q','(r-q)*t','S','F','F-S','F/S-1',
-             'r2','sse','success_fitting','failure_reason']
+             'r2','sse','success_fitting','failure_reason','const','coef']
         ).join(
             self.symbol_manager.df_symbol[['expiry', 'expiry_ts']].unique(), on='expiry'
         ).sort(['timestamp','expiry_ts']).drop('expiry_ts')
     
     def get_implied_forward_price(self, result: Result) -> float:
-        r, q = result['r'], result['q']
-        spot, tau = result['S'], result['tau']
-        return float(np.exp((r-q) * tau) * spot)
+        return float(np.exp((result['r']-result['q'])*result['tau'])*result['S'])
     
     def check_if_cutoff_for_0DTE(self, expiry: str, timestamp: datetime, is_0dte: bool, spot: float, tau: float) -> tuple[bool, Result|None]:
         if is_0dte:
@@ -93,4 +100,44 @@ class Fitter(ABC):
                 )
         return False, None
 
+    def reset_parameters(self):
+        """Reset all parameters to their original initialization values."""
+        for param_name, original_value in self._original_params.items():
+            setattr(self, param_name, original_value)
+        print("✅ Reset WLSRegressor parameters to original values")
+
+    def update_parameters(self, **kwargs):
+        """
+        Update regressor parameters dynamically.
+        """
+        updated = []
         
+        for param_name, new_value in kwargs.items():
+            if param_name in set(self._original_params.keys()):
+                old_value = getattr(self, param_name)
+                setattr(self, param_name, new_value)
+                updated.append(f"{param_name}: {old_value} → {new_value}")
+            else:
+                print(f"⚠️ Warning: '{param_name}' is not a valid parameter")
+        
+        if updated:
+            print("✅ Updated parameters:")
+            for update in updated:
+                print(f"   {update}")
+        else:
+            print("❌ No valid parameters were updated")
+
+    def get_current_parameters(self) -> dict:
+        """Get current parameter values as a dictionary."""
+        return {param: getattr(self, param) for param in self._original_params.keys()}
+
+    def print_parameters(self):
+        """Print current parameter values in a formatted way."""
+        print("📊 Current WLSRegressor Parameters:")
+        print("-" * 40)
+        current_params = self.get_current_parameters()
+        for param_name, value in current_params.items():
+            original_value = self._original_params[param_name]
+            changed = "✓" if value != original_value else " "
+            print(f"  {changed} {param_name:<20}: {value}")
+        print("-" * 40)

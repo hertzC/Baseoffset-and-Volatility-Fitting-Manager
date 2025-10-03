@@ -51,6 +51,16 @@ class NonlinearMinimization(Fitter):
         self.q_min, self.q_max = q_min, q_max
         self.minimum_rate, self.maximum_rate = minimum_rate, maximum_rate
         self.lambda_reg = lambda_reg
+        
+        # Store original parameters for reset functionality
+        self._original_params.update({
+            'future_spread_mult': future_spread_mult,
+            'future_spread_threshold': future_spread_threshold,
+            'r_min': r_min, 'r_max': r_max,
+            'q_min': q_min, 'q_max': q_max,
+            'minimum_rate': minimum_rate, 'maximum_rate': maximum_rate,
+            'lambda_reg': lambda_reg
+        })
 
     def fit(self, df: pl.DataFrame, prev_const: float, prev_coef: float, **kwargs) -> Result:
         """
@@ -101,7 +111,6 @@ class NonlinearMinimization(Fitter):
             const, coef = params
             residuals = y - (const + coef * X)
             sse =  np.sum(weight * residuals**2)
-
             penalty = lambda_reg * np.sum((params - initial_guess)**2)
             return sse + penalty
         
@@ -135,6 +144,7 @@ class NonlinearMinimization(Fitter):
         const, coef = result.x
         self.own_print("Optimization successful.")
         self.own_print(f"Optimal parameters (const, coef): {const:.6f}, {coef:.6f}")
+        self.own_print(f"Optimal parameters (r, q): {r:.6f}, {q:.6f}")
         self.own_print(f"Optimal objective value (SSE): {result.fun:.4f}")
         
         # Calculate R-squared
@@ -144,7 +154,7 @@ class NonlinearMinimization(Fitter):
         sst = np.sum(weight * (y - y_weighted_mean)**2)
         r_squared = 1 - (sse / sst)
         
-        return self._convert_to_result(expiry, timestamp, const, coef, spot, tau, float(r_squared), float(sse))
+        return self._convert_to_result(expiry, timestamp, result.x, spot, tau, float(r_squared), float(sse))
 
     def _build_constraints(self, spot: float, tau: float, future_bid: float, 
                           future_ask: float, has_futures: bool) -> list:

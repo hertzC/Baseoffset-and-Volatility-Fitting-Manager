@@ -23,6 +23,12 @@ class WLSRegressor(Fitter):
                  cutoff_time_for_0DTE: time = time(hour=4)
                 ):
         super().__init__(symbol_manager, minimum_strikes, cutoff_time_for_0DTE)
+        
+        # Store original parameters for reset functionality
+        self._original_params.update({
+            'minimum_strikes': minimum_strikes,
+            'cutoff_time_for_0DTE': cutoff_time_for_0DTE
+        })
 
     def fit(self, df: pl.DataFrame, **kwargs) -> Result:
         """
@@ -58,10 +64,9 @@ class WLSRegressor(Fitter):
             self.own_print(model.summary())
             
             # Convert parameters to financial rates
-            const, coef = model.params[0], model.params[1]
             r2_adj, sse = float(model.rsquared_adj), float(model.ssr)            
 
-            result = self._convert_to_result(expiry, timestamp, const, coef, S, tau, r2_adj, sse)
+            result = self._convert_to_result(expiry, timestamp, model.params, S, tau, r2_adj, sse)
 
         self.fit_results.append(result)        
         return result
