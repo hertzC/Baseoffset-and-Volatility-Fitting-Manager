@@ -108,13 +108,13 @@ class NonlinearMinimization(Fitter):
             # print(f"constant={const:10.2f} coefficient={coef:8.4f} r={optimized_rate[0]:10.4f} q={optimized_rate[1]:.4f} sse={sse:18.4f} penalty={penalty:12.4f}")
             return sse + penalty
         
+        initial_rate = convert_paramter_into_rate(initial_guess, spot, tau)
         enough_strikes = (df.height >= self.minimum_strikes)
         if enough_strikes:
             # Set up constraints
             constraints = self._build_constraints(spot, tau, future_bid, future_ask, has_futures)
             
             # Run optimization
-            initial_rate = convert_paramter_into_rate(initial_guess, spot, tau)
             result = minimize(fun=objective, 
                               x0=initial_guess, 
                               args=((X:=df['strike'].to_numpy()),
