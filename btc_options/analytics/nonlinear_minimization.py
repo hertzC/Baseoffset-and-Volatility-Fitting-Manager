@@ -129,7 +129,7 @@ class NonlinearMinimization(Fitter):
         
         if not enough_strikes or not result.success:
             error_msg = result.message if enough_strikes else "insufficient strikes"
-            print(f"   ⚠️ {timestamp}: optimization failed on {expiry}, Error = {error_msg}; initial_guess = ({initial_guess[0]:.2f}, {initial_guess[1]:.6f}) (r={initial_guess[0]:.4f}, q={initial_guess[1]:.4f})")
+            print(f"   ⚠️ {timestamp}: optimization failed on {expiry}, Error = {error_msg}; initial_guess = ({initial_guess[0]:.2f}, {initial_guess[1]:.6f}) (r={initial_rate[0]:.4f}, q={initial_rate[1]:.4f})")
             return Result(expiry=expiry,
                           timestamp=timestamp,
                           S=spot,
