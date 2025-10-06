@@ -179,20 +179,19 @@ class NonlinearMinimization(Fitter):
         
         # Add futures constraints if available
         if has_futures:
-            lb, ub = self._get_future_bounds(future_bid, future_ask)
+            lb, ub = self._get_future_bounds(future_bid, future_ask, self.future_spread_mult)
             constraints.extend([
                 {'type': 'ineq', 'fun': lambda p: -p[0] / p[1] - lb},
                 {'type': 'ineq', 'fun': lambda p: ub - (-p[0] / p[1])},
             ])
+            self.own_print(f"Future bounds: {lb:.2f} to {ub:.2f} from {future_bid:.2f}-{future_ask:.2f}")
         
         return constraints
 
-    def _get_future_bounds(self, bid: float, ask: float) -> tuple[float, float]:
+    @staticmethod
+    def _get_future_bounds(bid: float, ask: float, future_spread_mult: float) -> tuple[float, float]:
         """Create constraint boundaries based on futures prices."""
         mid = (bid + ask) / 2
-        buffer = self.future_spread_mult / 2
-        lb = min(bid, mid * (1 - buffer))
-        ub = max(ask, mid * (1 + buffer))
+        buffer = future_spread_mult / 2
+        return min(bid, mid * (1 - buffer)), max(ask, mid * (1 + buffer))
         
-        self.own_print(f"Future bounds: {lb:.2f} to {ub:.2f} from {bid:.2f}-{ask:.2f}")
-        return lb, ub

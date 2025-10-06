@@ -64,7 +64,8 @@ class Fitter(ABC):
         return pl.DataFrame(self.fit_results).with_columns(            
             [pl.col(_col).round(4) for _col in ['tau','r','q','r2','sse']]
         ).with_columns(
-            (pl.col('r') - pl.col('q')).alias('r-q'),
+            (pl.col('r') - pl.col('q')).alias('r-q')
+        ).with_columns(
             ((pl.col('r') - pl.col('q')) * pl.col('tau')).round(4).alias('(r-q)*t')
         ).with_columns(
             (np.exp(pl.col('(r-q)*t')) * pl.col('S')).round(2).alias('F')
@@ -78,6 +79,26 @@ class Fitter(ABC):
             self.symbol_manager.df_symbol[['expiry', 'expiry_ts']].unique(), on='expiry'
         ).sort(['timestamp','expiry_ts']).drop('expiry_ts')
     
+    @staticmethod
+    def get_expiry_summary(df: pl.DataFrame, symbol_df: pl.DataFrame) -> pl.DataFrame:
+        result = df.group_by('expiry').agg([
+            pl.len().alias('obs'),
+            (pl.col('r') * 100).drop_nans().mean().round(2).alias('r_%'),
+            (pl.col('r') * 100).min().round(2).alias('r_min%'),
+            (pl.col('r') * 100).max().round(2).alias('r_max%'),
+            (pl.col('q') * 100).drop_nans().mean().round(2).alias('q_%'),
+            (pl.col('q') * 100).min().round(2).alias('q_min%'),
+            (pl.col('q') * 100).max().round(2).alias('q_max%'),
+            (pl.col('(r-q)*t') * 100).drop_nans().mean().round(2).alias('spread_%'),
+            (pl.col('r-q') * 100).drop_nans().mean().round(2).alias('spread_%(pa)'),
+            (pl.col('F-S')).drop_nans().mean().round(1).alias('BaseOffset_$'),
+            (pl.col('F/S-1') * 100).drop_nans().mean().round(2).alias('Basis_%'),
+            (pl.col('F/S-1') * 100).drop_nans().std().round(4).alias('Basis_%(stdev)'),
+            # pl.col('r2').drop_nans().mean().round(4).alias('R²'),
+            pl.col('sse').drop_nans().mean().round(4).alias('Avg_SSE')
+        ]).join(symbol_df[['expiry', 'expiry_ts']].unique(), on='expiry').sort('expiry_ts').drop('expiry_ts')
+        return result
+
     def get_implied_forward_price(self, result: Result) -> float:
         return float(np.exp((result['r']-result['q'])*result['tau'])*result['S'])
     

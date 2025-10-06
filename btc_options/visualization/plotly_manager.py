@@ -29,11 +29,7 @@ class PlotlyManager:
 
     def _safe_show(self, fig):
         """Safely display plotly figure inline within the notebook."""
-        try:
-            # Configure for inline notebook display
-            import plotly.io as pio
-            from IPython.display import HTML, display
-            
+        try:            
             # Set the renderer to ensure inline display
             pio.renderers.default = "notebook"
             
@@ -123,7 +119,7 @@ class PlotlyManager:
 
     def plot_synthetic_bid_ask(self, expiry: str, timestamp: str,
                               df_option_synthetic: pl.DataFrame, fitted_result: dict,
-                              use_fitted_rate: bool = False, width: int = 675, height: int = 450):
+                              use_fitted_rate: bool = False, width: int = 675, height: int = 450, **kwargs):
         """
         Plot synthetic forward prices vs futures market prices.
         
@@ -162,14 +158,14 @@ class PlotlyManager:
         # Add futures market data if available
         if 'bid_price_fut' in df.columns and 'ask_price_fut' in df.columns:
             fig.add_trace(go.Scatter(
-                x=df['strike'], y=df['bid_price_fut'], 
-                mode='lines', name='Bid Future', 
+                x=df['strike'], y=kwargs.get('bid_price_fut', df['bid_price_fut']), 
+                mode='lines', name='Future Lower Bound', 
                 line=dict(color='black', dash='dot', width=1)
             ))
             
             fig.add_trace(go.Scatter(
-                x=df['strike'], y=df['ask_price_fut'], 
-                mode='lines', name='Ask Future', 
+                x=df['strike'], y=kwargs.get('ask_price_fut', df['ask_price_fut']),
+                mode='lines', name='Future Upper Bound',
                 line=dict(color='black', dash='dot', width=1)
             ))
         
