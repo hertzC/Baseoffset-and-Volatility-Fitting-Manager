@@ -12,6 +12,7 @@ from btc_options.analytics.fitter import Fitter
 from btc_options.data_managers.deribit_md_manager import DeribitMDManager
 from btc_options.data_managers.orderbook_deribit_md_manager import OrderbookDeribitMDManager
 from btc_options.analytics.maths import convert_paramter_into_rate
+from config_loader import Config
 from scipy.optimize import minimize
 
 
@@ -20,17 +21,7 @@ class NonlinearMinimization(Fitter):
     
     def __init__(self, 
                  symbol_manager: Union[DeribitMDManager, OrderbookDeribitMDManager],
-                 future_spread_mult: float = 0.0005, 
-                 future_spread_threshold: float = 0.0020,
-                 r_min: float = -0.01, 
-                 r_max: float = 0.5,
-                 q_min: float = -0.005, 
-                 q_max: float = 0.1,
-                 minimum_rate: float = -0.005, 
-                 maximum_rate: float = 0.30,
-                 minimum_strikes: int = 5, 
-                 lambda_reg: float = 0.00,  # control the regularization
-                 cutoff_time_for_0DTE: time = time(hour=4)
+                 config_loader: Config                 
                  ):
         """
         Initialize with futures constraint parameters and rate bounds.
@@ -45,22 +36,22 @@ class NonlinearMinimization(Fitter):
             minimum_rate: Minimum rate spread (r-q)
             maximum_rate: Maximum rate spread (r-q)
         """
-        super().__init__(symbol_manager, minimum_strikes, cutoff_time_for_0DTE)
-        self.future_spread_mult = future_spread_mult
-        self.future_spread_threshold = future_spread_threshold    
-        self.r_min, self.r_max = r_min, r_max
-        self.q_min, self.q_max = q_min, q_max
-        self.minimum_rate, self.maximum_rate = minimum_rate, maximum_rate
-        self.lambda_reg = lambda_reg
+        super().__init__(symbol_manager, config_loader)
+        self.future_spread_mult = self.config_loader.future_spread_mult
+        rate_constraints = self.config_loader.get_rate_constraints()
+        self.r_min, self.r_max = rate_constraints['r_min'], rate_constraints['r_max']
+        self.q_min, self.q_max = rate_constraints['q_min'], rate_constraints['q_max']
+        self.minimum_rate, self.maximum_rate = rate_constraints['minimum_rate'], rate_constraints['maximum_rate']
+        self.lambda_reg = self.config_loader.lambda_reg
+        self.set_printable(self.config_loader.get('fitting.nonlinear.printable', False))
         
         # Store original parameters for reset functionality
         self._original_params.update({
-            'future_spread_mult': future_spread_mult,
-            'future_spread_threshold': future_spread_threshold,
-            'r_min': r_min, 'r_max': r_max,
-            'q_min': q_min, 'q_max': q_max,
-            'minimum_rate': minimum_rate, 'maximum_rate': maximum_rate,
-            'lambda_reg': lambda_reg
+            'future_spread_mult': self.future_spread_mult,
+            'r_min': self.r_min, 'r_max': self.r_max,
+            'q_min': self.q_min, 'q_max': self.q_max,
+            'minimum_rate': self.minimum_rate, 'maximum_rate': self.maximum_rate,
+            'lambda_reg': self.lambda_reg
         })
 
     def fit(self, df: pl.DataFrame, prev_const: float, prev_coef: float, **kwargs) -> Result:
@@ -109,7 +100,7 @@ class NonlinearMinimization(Fitter):
             return sse + penalty
         
         initial_rate = convert_paramter_into_rate(initial_guess, spot, tau)
-        enough_strikes = (df.height >= self.minimum_strikes)
+        enough_strikes = (df.height >= self.config_loader.minimum_strikes)
         if enough_strikes:
             # Set up constraints
             constraints = self._build_constraints(spot, tau, future_bid, future_ask, has_futures)
@@ -130,16 +121,17 @@ class NonlinearMinimization(Fitter):
         if not enough_strikes or not result.success:
             error_msg = result.message if enough_strikes else "insufficient strikes"
             print(f"   ⚠️ {timestamp}: optimization failed on {expiry}, Error = {error_msg}; initial_guess = ({initial_guess[0]:.2f}, {initial_guess[1]:.6f}) (r={initial_rate[0]:.4f}, q={initial_rate[1]:.4f})")
+            
             return Result(expiry=expiry,
                           timestamp=timestamp,
                           S=spot,
-                          r=self.fit_results[-1]['r'],
-                          q=self.fit_results[-1]['q'],
+                          r=self.fit_results[-1]['r'] if self.fit_results else initial_rate[0],
+                          q=self.fit_results[-1]['q'] if self.fit_results else initial_rate[1],
                           tau=tau,
-                          const=self.fit_results[-1]['const'],
-                          coef=self.fit_results[-1]['coef'],
-                          r2=self.fit_results[-1]['r2'],
-                          sse=self.fit_results[-1]['sse'],
+                          const=self.fit_results[-1]['const'] if self.fit_results else initial_guess[0],
+                          coef=self.fit_results[-1]['coef'] if self.fit_results else initial_guess[1],
+                          r2=self.fit_results[-1]['r2'] if self.fit_results else 0.0,
+                          sse=self.fit_results[-1]['sse'] if self.fit_results else 0.0,
                           success_fitting=False,
                           failure_reason=error_msg
                           )

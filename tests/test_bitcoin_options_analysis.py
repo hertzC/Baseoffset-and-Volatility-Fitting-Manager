@@ -17,8 +17,10 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from btc_options.data_managers.deribit_md_manager import DeribitMDManager
+from btc_options.data_managers.orderbook_deribit_md_manager import OrderbookDeribitMDManager
 from btc_options.analytics.weight_least_square_regressor import WLSRegressor
 from btc_options.analytics.nonlinear_minimization import NonlinearMinimization
+from config_loader import Config, load_config
 
 
 class TestSampleDataGenerator:
@@ -207,16 +209,25 @@ class TestSyntheticCreation(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
+        # Load configuration
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_path = os.path.join(project_root, 'config.yaml')
+        self.config = Config(config_path)
+        
         # Create mock symbol manager with sample data
         self.sample_conflated_data = TestSampleDataGenerator.create_sample_conflated_data()
         self.sample_symbol_data = TestSampleDataGenerator.create_sample_symbol_data()
         
         # Create a mock DeribitMDManager
         class MockDeribitMDManager:
-            def __init__(self):
+            def __init__(self, config):
+                self.config = config
                 self.df_symbol = TestSampleDataGenerator.create_sample_symbol_data()
                 self.opt_expiries = ['29FEB24']
                 self.fut_expiries = ['29FEB24']
+            
+            def is_expiry_today(self, expiry):
+                return False
             
             def create_option_synthetic(self, df_conflated, expiry, timestamp):
                 # Filter options for the expiry
@@ -247,7 +258,7 @@ class TestSyntheticCreation(unittest.TestCase):
                 
                 return option_data, pl.DataFrame(synthetic_data)
         
-        self.symbol_manager = MockDeribitMDManager()
+        self.symbol_manager = MockDeribitMDManager(self.config)
         
     def test_synthetic_creation_consistency(self):
         """Test that synthetic option creation produces consistent results."""
@@ -292,6 +303,11 @@ class TestWLSRegression(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
+        # Load configuration
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_path = os.path.join(project_root, 'config.yaml')
+        self.config = Config(config_path)
+        
         # Use realistic synthetic data based on exact put-call parity relationship
         self.sample_synthetic_data = TestSampleDataGenerator.create_realistic_synthetic_data(
             r=0.05, q=0.01, S=55000, tau=0.0274
@@ -299,11 +315,14 @@ class TestWLSRegression(unittest.TestCase):
         
         # Mock symbol manager
         class MockSymbolManager:
+            def __init__(self, config):
+                self.config = config
+            
             def is_expiry_today(self, expiry):
                 return False
         
-        self.symbol_manager = MockSymbolManager()
-        self.wls_regressor = WLSRegressor(self.symbol_manager)
+        self.symbol_manager = MockSymbolManager(self.config)
+        self.wls_regressor = WLSRegressor(self.symbol_manager, self.config)
     
     def test_wls_fitting_consistency(self):
         """Test that WLS fitting produces consistent results."""
@@ -345,7 +364,6 @@ class TestWLSRegression(unittest.TestCase):
         
         # Test insufficient data
         small_data = self.sample_synthetic_data.head(2)
-        self.wls_regressor.update_parameters(minimum_strikes=5)
         
         # Should handle insufficient strikes gracefully
         result = self.wls_regressor.fit(
@@ -363,6 +381,11 @@ class TestNonlinearMinimization(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
+        # Load configuration
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_path = os.path.join(project_root, 'config.yaml')
+        self.config = Config(config_path)
+        
         # Use same realistic synthetic data as WLS tests
         self.sample_synthetic_data = TestSampleDataGenerator.create_realistic_synthetic_data(
             r=0.05, q=0.01, S=55000, tau=0.0274
@@ -370,35 +393,19 @@ class TestNonlinearMinimization(unittest.TestCase):
         
         # Mock symbol manager
         class MockSymbolManager:
+            def __init__(self, config):
+                self.config = config
+            
             def is_expiry_today(self, expiry):
                 return False
         
-        self.symbol_manager = MockSymbolManager()
-        self.nonlinear_minimizer = NonlinearMinimization(self.symbol_manager)
+        self.symbol_manager = MockSymbolManager(self.config)
+        self.nonlinear_minimizer = NonlinearMinimization(self.symbol_manager, self.config)
     
     def test_nonlinear_fitting_consistency(self):
         """Test that nonlinear optimization produces consistent results."""
         # First run WLS to get realistic initial guess
-        wls_regressor = WLSRegressor(self.symbol_manager)
-        wls_result = wls_regressor.fit(
-            self.sample_synthetic_data,
-            expiry='29FEB24',
-            timestamp=datetime(2024, 2, 29, 12, 30, 0)
-        )
-        
-        # Use WLS results as initial guess
-        prev_const = wls_result['const']
-        prev_coef = wls_result['coef']
-        
-        # Expected results
-        expected_r_range = (0.0, 0.2)  # Wider range to accommodate variations
-        expected_q_range = (-0.05, 0.05)
-        expected_r2_min = 0.70  # Lower minimum for more tolerance
-        
-    def test_nonlinear_fitting_consistency(self):
-        """Test that nonlinear optimization produces consistent results."""
-        # First run WLS to get realistic initial guess
-        wls_regressor = WLSRegressor(self.symbol_manager)
+        wls_regressor = WLSRegressor(self.symbol_manager, self.config)
         wls_result = wls_regressor.fit(
             self.sample_synthetic_data,
             expiry='29FEB24',
@@ -447,26 +454,18 @@ class TestNonlinearMinimization(unittest.TestCase):
     
     def test_parameter_management(self):
         """Test parameter management functionality."""
-        # Test parameter updates
-        original_params = self.nonlinear_minimizer.get_current_parameters()
+        # Test that configuration parameters are properly loaded
+        rate_constraints = self.config.get_rate_constraints()
         
-        # Update some parameters
-        self.nonlinear_minimizer.update_parameters(lambda_reg=1000.0, r_max=0.3)
-        updated_params = self.nonlinear_minimizer.get_current_parameters()
+        # Check that rate constraints are available
+        required_constraints = ['r_min', 'r_max', 'q_min', 'q_max', 'minimum_rate', 'maximum_rate']
+        for constraint in required_constraints:
+            self.assertIn(constraint, rate_constraints, f"Rate constraint {constraint} should be available")
         
-        # Check parameters were updated
-        self.assertEqual(updated_params['lambda_reg'], 1000.0)
-        self.assertEqual(updated_params['r_max'], 0.3)
-        self.assertNotEqual(original_params['lambda_reg'], updated_params['lambda_reg'])
+        # Check reasonable values
+        self.assertLess(rate_constraints['r_min'], rate_constraints['r_max'], "r_min should be less than r_max")
+        self.assertLess(rate_constraints['q_min'], rate_constraints['q_max'], "q_min should be less than q_max")
         
-        # Test reset functionality
-        self.nonlinear_minimizer.reset_parameters()
-        reset_params = self.nonlinear_minimizer.get_current_parameters()
-        
-        # Should match original parameters
-        self.assertEqual(reset_params['lambda_reg'], original_params['lambda_reg'])
-        self.assertEqual(reset_params['r_max'], original_params['r_max'])
-    
     def test_results_management(self):
         """Test results management functionality."""
         # Check initial state
@@ -482,20 +481,28 @@ class TestRegressionValues(unittest.TestCase):
     
     def setUp(self):
         """Set up fixed test data for regression testing."""
+        # Load configuration
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_path = os.path.join(project_root, 'config.yaml')
+        self.config = Config(config_path)
+        
         # Fixed synthetic data for consistent testing with exact put-call parity
         self.fixed_synthetic_data = TestSampleDataGenerator.create_realistic_synthetic_data(
             r=0.05, q=0.01, S=55000, tau=0.0274
         )
         
         class MockSymbolManager:
+            def __init__(self, config):
+                self.config = config
+            
             def is_expiry_today(self, expiry):
                 return False
         
-        self.symbol_manager = MockSymbolManager()
+        self.symbol_manager = MockSymbolManager(self.config)
     
     def test_wls_baseline_values(self):
         """Test WLS regression produces expected baseline values."""
-        wls_regressor = WLSRegressor(self.symbol_manager)
+        wls_regressor = WLSRegressor(self.symbol_manager, self.config)
         
         result = wls_regressor.fit(
             self.fixed_synthetic_data,

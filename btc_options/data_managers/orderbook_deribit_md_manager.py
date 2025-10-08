@@ -9,6 +9,8 @@ then behaves exactly like the standard DeribitMDManager.
 import numpy as np
 import polars as pl
 
+from config_loader import Config
+
 from .orderbook_helper import get_volume_targeted_price
 from .deribit_md_manager import DeribitMDManager
 
@@ -28,7 +30,7 @@ class OrderbookDeribitMDManager(DeribitMDManager):
     """
     CONFLATION_COLUMNS = ['bid_price', 'ask_price', 'bid_size', 'ask_size', 'index_price']
 
-    def __init__(self, df_orderbook: pl.LazyFrame, date_str: str, level: int = 0, future_min_tick: float = 0.0001, price_widening_factor: float = 0.0001, target_coin_volume: int = 1):
+    def __init__(self, df_orderbook: pl.LazyFrame, date_str: str, config_loader: Config):
         """
         Initialize with order book depth data, converting to BBO format.
         
@@ -38,10 +40,10 @@ class OrderbookDeribitMDManager(DeribitMDManager):
             level: Which orderbook level to use (0=best, 1=second best, etc.)
         """
         super().__init__(df_orderbook, date_str)
-        self.num_of_level = level  # Store the order book level used
-        self.future_min_tick = future_min_tick  # Minimum tick size for Deribit futures and perpetuals
-        self.price_widening_factor = price_widening_factor  # 1 basis point price widening if not enough depth
-        self.target_coin_volume = target_coin_volume  # Target coin volume for VWAP calculation
+        self.num_of_level = config_loader.orderbook_level  
+        self.future_min_tick = config_loader.future_min_tick_size
+        self.price_widening_factor = config_loader.price_widening_factor
+        self.target_coin_volume = config_loader.target_coin_volume
 
     @staticmethod
     def convert_orderbook_to_bbo(df_orderbook: pl.DataFrame, level: int = 0) -> pl.DataFrame:

@@ -18,8 +18,8 @@ data:
 market_data:
   # Data conflation settings
   conflation:
-    # Time interval for conflation (e.g., "1m", "5m", "15m")
-    every: "1m"
+    # Time interval for conflation (e.g., "1m", "5m", "15m", "30s")
+    every: "30s"
     
     # Lookback period for conflation (e.g., "5m", "10m", "15m")
     period: "10m"
@@ -48,11 +48,14 @@ analysis:
     # Whether to use constrained optimization (true) or WLS only (false)
     use_constrained_optimization: true
     
-    # Time interval between analysis points in minutes
-    time_interval_minutes: 1
+    # Time interval between analysis points in seconds
+    time_interval_seconds: 30
     
     # Minimum number of strikes required for valid analysis
     minimum_strikes: 3
+
+    # Cutoff time (hours before expiry) for 0DTE analysis
+    cutoff_hour_for_0DTE: 4
 
 # Fitting Algorithm Parameters
 fitting:
@@ -68,6 +71,9 @@ fitting:
     
     # Future spread multiplier for constraint widening
     future_spread_mult: 0.0020
+
+    # Minimum future spread threshold
+    future_spread_threshold: 0.0200
     
     # Lambda regularization parameter
     lambda_reg: 500.0
@@ -75,12 +81,18 @@ fitting:
     # Rate constraints (in decimal format, e.g., 0.05 = 5%)
     constraints:
       # USD interest rate bounds
-      r_min: -0.05
-      r_max: 0.10
+      r_min: -0.30
+      r_max: 1.00
+      # q_min: -0.30
+      # q_max: 1.00
       
       # BTC funding rate bounds  
-      q_min: -0.30
-      q_max: 1.00
+      q_min: -0.05
+      q_max: 0.1
+
+      # Overall rate bounds
+      maximum_rate: 0.30
+      minimum_rate: -0.10
 
 # Result Management
 results:

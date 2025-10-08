@@ -144,11 +144,6 @@ class Config:
         return self.get('data.use_orderbook_data', False)
     
     @property
-    def orderbook_level(self) -> int:
-        """Get orderbook level to use."""
-        return self.get('data.orderbook_level', 0)
-    
-    @property
     def conflation_every(self) -> str:
         """Get conflation interval."""
         return self.get('market_data.conflation.every')
@@ -158,21 +153,45 @@ class Config:
         """Get conflation period."""
         return self.get('market_data.conflation.period')
     
+    ##############################  VWAP ##########################################
+    @property
+    def orderbook_level(self) -> int:
+        """Get orderbook level to use."""
+        return self.get('data.orderbook_level', 0)
+    
     @property
     def price_widening_factor(self) -> float:
         """Get price widening factor."""
         return self.get('market_data.price_widening_factor', 0.00025)
     
     @property
+    def target_coin_volume(self) -> float:
+        """Get target coin volume."""
+        return self.get('market_data.target_coin_volume', 1.0)
+    
+    @property
+    def future_min_tick_size(self) -> float:
+        """Get future minimum tick size."""
+        return self.get('market_data.future_min_tick_size', 0.0001)
+    ################################################################################
+
+
+    ##############################  Optimization ###################################
+    @property
     def use_constrained_optimization(self) -> bool:
         """Get whether to use constrained optimization."""
         return self.get('analysis.time_series.use_constrained_optimization', True)
     
     @property
-    def time_interval_minutes(self) -> int:
-        """Get time interval in minutes."""
-        return self.get('analysis.time_series.time_interval_minutes', 5)
+    def time_interval_seconds(self) -> int:
+        """Get time interval in seconds."""
+        return self.get('analysis.time_series.time_interval_seconds', 60)
     
+    @property
+    def cutoff_hour_for_0DTE(self) -> int:
+        """Get cutoff time (hours before expiry) for 0DTE analysis."""
+        return self.get('analysis.time_series.cutoff_hour_for_0DTE', 4)
+
     @property
     def minimum_strikes(self) -> int:
         """Get minimum strikes required."""
@@ -192,16 +211,7 @@ class Config:
     def old_weight(self) -> float:
         """Get exponential smoothing old weight."""
         return self.get('results.smoothing.old_weight', 0.95)
-    
-    @property
-    def min_success_rate(self) -> float:
-        """Get minimum success rate for export."""
-        return self.get('results.export.min_success_rate', 50.0)
-    
-    @property
-    def min_total_results(self) -> int:
-        """Get minimum total results for export."""
-        return self.get('results.export.min_total_results', 100)
+    ################################################################################
     
     @property
     def export_dir(self) -> str:
@@ -247,9 +257,11 @@ class Config:
         """
         return {
             'r_min': self.get('fitting.nonlinear.constraints.r_min', -0.05),
-            'r_max': self.get('fitting.nonlinear.constraints.r_max', 0.10),
-            'q_min': self.get('fitting.nonlinear.constraints.q_min', -0.30),
-            'q_max': self.get('fitting.nonlinear.constraints.q_max', 1.00)
+            'r_max': self.get('fitting.nonlinear.constraints.r_max', 0.50),
+            'q_min': self.get('fitting.nonlinear.constraints.q_min', -0.05),
+            'q_max': self.get('fitting.nonlinear.constraints.q_max', 0.20),
+            'minimum_rate': self.get('fitting.nonlinear.constraints.minimum_rate', -0.10),
+            'maximum_rate': self.get('fitting.nonlinear.constraints.maximum_rate', 0.30)
         }
     
     def to_dict(self) -> Dict[str, Any]:

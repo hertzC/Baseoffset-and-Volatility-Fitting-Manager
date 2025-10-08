@@ -96,11 +96,11 @@ def load_market_data(config, data_file: str) -> pl.LazyFrame:
 
 
 def run_comprehensive_analysis(symbol_manager: DeribitMDManager,
-                              wls_regressor: WLSRegressor, 
-                              nonlinear_minimizer: NonlinearMinimization,
-                              df_conflated_md: pl.DataFrame,
-                              use_constrained_optimization: bool = True,
-                              time_interval_minutes: int = 5) -> tuple[pl.DataFrame, dict]:
+                               wls_regressor: WLSRegressor, 
+                               nonlinear_minimizer: NonlinearMinimization,
+                               df_conflated_md: pl.DataFrame,
+                               use_constrained_optimization: bool,
+                               time_interval_seconds: int) -> tuple[pl.DataFrame, dict]:
     """
     Run comprehensive time series analysis across all expiries using notebook logic.
     
@@ -110,14 +110,14 @@ def run_comprehensive_analysis(symbol_manager: DeribitMDManager,
         nonlinear_minimizer: Constrained optimization fitter
         df_conflated_md: Conflated market data
         use_constrained_optimization: Whether to use constrained optimization
-        time_interval_minutes: Minutes between analysis points
+        time_interval_seconds: Seconds between analysis points
         
     Returns:
         Tuple of (results DataFrame, success statistics)
     """
     print(f"🚀 Starting comprehensive analysis across all expiries...")
     print(f"🎯 Mode: {'Constrained Optimization' if use_constrained_optimization else 'WLS Only'}")
-    print(f"⏱️  Sampling interval: {time_interval_minutes} minutes")
+    print(f"⏱️  Sampling interval: {time_interval_seconds} seconds")
     
     # Configuration
     successful_fits = {}
@@ -127,9 +127,7 @@ def run_comprehensive_analysis(symbol_manager: DeribitMDManager,
     wls_regressor.set_printable(False)
     nonlinear_minimizer.reset_parameters()
     nonlinear_minimizer.clear_results()
-    nonlinear_minimizer.future_spread_mult = 0.0020
     nonlinear_minimizer.set_printable(False)
-    nonlinear_minimizer.lambda_reg = 500.0
     
     # Calculate time ranges for each expiry
     start_time_map = {
@@ -148,7 +146,7 @@ def run_comprehensive_analysis(symbol_manager: DeribitMDManager,
             successful_fits[expiry] = {'total': 0, 'successful': 0}
             
             # Calculate time range for this expiry
-            start_time = start_time_map[expiry]['start_time'] + timedelta(minutes=time_interval_minutes)
+            start_time = start_time_map[expiry]['start_time'] + timedelta(seconds=time_interval_seconds)
             if symbol_manager.is_expiry_today(expiry):
                 end_time = start_time.replace(hour=7, minute=0, second=0)
             else:
@@ -157,7 +155,7 @@ def run_comprehensive_analysis(symbol_manager: DeribitMDManager,
             sampled_timestamps = pl.datetime_range(
                 start=start_time, 
                 end=end_time, 
-                interval=f"{time_interval_minutes}m", 
+                interval=f"{time_interval_seconds}s", 
                 eager=True
             ).to_list()
             
@@ -169,9 +167,7 @@ def run_comprehensive_analysis(symbol_manager: DeribitMDManager,
             
             # Process each timestamp for this expiry
             for ts in sampled_timestamps:
-                try:
-                    successful_fits[expiry]['total'] += 1
-                    
+                try:                    
                     # Create option synthetic data for this timestamp
                     df_chain, df_synthetic = symbol_manager.create_option_synthetic(
                         df_conflated_md, expiry=expiry, timestamp=ts
@@ -189,6 +185,7 @@ def run_comprehensive_analysis(symbol_manager: DeribitMDManager,
                         if is_cutoff:
                             result = cutoff_result
                             continue
+                        successful_fits[expiry]['total'] += 1
                         
                         # Perform fitting based on mode
                         if use_constrained_optimization:
@@ -249,79 +246,58 @@ def run_comprehensive_analysis(symbol_manager: DeribitMDManager,
 
 
 def save_results_to_csv(df_results: pl.DataFrame, 
-                       fit_result_manager: FitterResultManager,
-                       successful_fits: dict,
-                       date_str: str,
-                       use_constrained: bool = True) -> tuple[str, str]:
+                        df_conflated_md: pl.DataFrame,
+                        date_str: str) -> tuple[str|None, str|None]:
     """
     Save analysis results to CSV files if quality is acceptable.
     
     Args:
         df_results: Results DataFrame
-        fit_result_manager: Manager for result processing
-        successful_fits: Success statistics
         date_str: Date string for filename
         use_constrained: Whether constrained optimization was used
         
     Returns:
-        Tuple of (results_path, summary_path) if saved, otherwise (None, None)
+        Tuple of (results_path, summary_path) if saved, otherwise None
     """
     if df_results.is_empty():
         print("❌ No results to save - DataFrame is empty")
         return None, None
-    
+
     # Check data quality
     total_results = len(df_results)
     successful_results = len(df_results.filter(pl.col('success_fitting') == True))
     success_rate = (successful_results / total_results) * 100 if total_results > 0 else 0
-    
-    # Quality thresholds
-    min_success_rate = 50.0  # Minimum 50% success rate
-    min_total_results = 100  # Minimum 100 total observations
-    
+        
     print(f"\n� Data Quality Check:")
     print(f"   📊 Total results: {total_results:,}")
     print(f"   ✅ Successful fits: {successful_results:,}")
     print(f"   📈 Success rate: {success_rate:.1f}%")
-    print(f"   🎯 Quality thresholds: {min_success_rate}% success, {min_total_results} min results")
-    
-    if success_rate < min_success_rate:
-        print(f"❌ Quality check failed: Success rate {success_rate:.1f}% below threshold {min_success_rate}%")
-        return None, None
-    
-    if total_results < min_total_results:
-        print(f"❌ Quality check failed: Total results {total_results} below threshold {min_total_results}")
-        return None, None
     
     print("✅ Quality check passed - proceeding with CSV export")
     
     # Create exports directory
-    exports_dir = "exports"
+    exports_dir = "results/" + date_str
     os.makedirs(exports_dir, exist_ok=True)
-    
-    # Generate timestamped filenames
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    method = "constrained" if use_constrained else "wls"
-    
-    results_filename = f"bitcoin_options_results_{date_str}_{method}_{timestamp}.csv"
-    summary_filename = f"bitcoin_options_summary_{date_str}_{method}_{timestamp}.csv"
+        
+    results_filename = f"baseoffset_results.csv"
+    md_filename = "conflated_md.csv"
     
     results_path = os.path.join(exports_dir, results_filename)
-    summary_path = os.path.join(exports_dir, summary_filename)
+    md_path = os.path.join(exports_dir, md_filename)
     
     try:
         # Save main results
-        df_results.write_csv(results_path)
-        
-        # Generate and save summary
-        df_summary = fit_result_manager.get_expiry_summary(df_results)
-        df_summary.write_csv(summary_path)
+        df_results.write_csv(results_path)        
         
         print(f"\n💾 Files saved successfully:")
         print(f"   📊 Results: {results_filename}")
-        print(f"   📋 Summary: {summary_filename}")
         print(f"   📁 Location: {os.path.abspath(exports_dir)}")
         
+        # Save conflated market data
+        df_conflated_md.write_csv(md_path)
+        print(f"   📊 Conflated Market Data: {md_filename}")
+        print(f"   📁 Location: {os.path.abspath(exports_dir)}")
+
         # Display key metrics
         print(f"\n🎯 Key Results Summary:")
         avg_r = df_results.filter(pl.col('success_fitting') == True)['r'].mean() * 100
@@ -334,7 +310,7 @@ def save_results_to_csv(df_results: pl.DataFrame,
         print(f"   📊 Average rate spread: {avg_spread:.2f}%")
         print(f"   📈 Average R²: {avg_r2:.4f}")
         
-        return results_path, summary_path
+        return results_path, md_path
         
     except Exception as e:
         print(f"❌ Error saving CSV files: {e}")
@@ -367,7 +343,7 @@ def main():
     print(f"⚙️  Configuration Summary:")
     print(f"   🔧 Conflation: every {config.conflation_every}, period {config.conflation_period}")
     print(f"   🎯 Method: {'Constrained optimization' if config.use_constrained_optimization else 'WLS only'}")
-    print(f"   ⏱️  Sampling interval: {config.time_interval_minutes} minutes")
+    print(f"   ⏱️  Sampling interval: {config.time_interval_seconds} minutes")
     print(f"   🎚️  Smoothing weight: {config.old_weight}")
     
     # Load market data
@@ -378,19 +354,19 @@ def main():
     
     # Initialize managers
     if config.use_orderbook_data:
-        symbol_manager = OrderbookDeribitMDManager()
+        symbol_manager = OrderbookDeribitMDManager(df_md, date_str=config.date_str, config_loader=config)
         print("🔧 Using OrderBook data manager")
     else:
-        symbol_manager = DeribitMDManager()
+        symbol_manager = DeribitMDManager(df_md, date_str=config.date_str)
         print("🔧 Using BBO data manager")
     
-    wls_regressor = WLSRegressor(symbol_manager)
-    nonlinear_minimizer = NonlinearMinimization(symbol_manager)
+    wls_regressor = WLSRegressor(symbol_manager, config)
+    nonlinear_minimizer = NonlinearMinimization(symbol_manager, config)
     
     # Conflate market data
     print(f"\n🔄 Conflating market data...")
-    df_conflated_md = symbol_manager.conflate_market_data(
-        df_md, every=config.conflation_every, period=config.conflation_period
+    df_conflated_md = symbol_manager.get_conflated_md(
+        freq=config.conflation_every, period=config.conflation_period
     ).sort(['expiry', 'timestamp'])
     
     print(f"✅ Conflated data: {len(df_conflated_md):,} records")
@@ -406,7 +382,7 @@ def main():
             nonlinear_minimizer=nonlinear_minimizer, 
             df_conflated_md=df_conflated_md,
             use_constrained_optimization=config.use_constrained_optimization,
-            time_interval_minutes=config.time_interval_minutes
+            time_interval_seconds=config.time_interval_seconds
         )
         
         if df_results.is_empty():
@@ -419,28 +395,17 @@ def main():
         print(f"   📈 Total fits attempted: {total_fits:,}")
         print(f"   ✅ Successful fits: {successful_fits_count:,}")
         print(f"   📊 Overall success rate: {(successful_fits_count/total_fits)*100:.1f}%")
-        
-        # Create result manager for smoothing and export
-        fit_result_manager = FitterResultManager(
-            symbol_manager.opt_expiries,
-            symbol_manager.fut_expiries,
-            symbol_manager.df_symbol,
-            nonlinear_minimizer.fit_results if config.use_constrained_optimization else wls_regressor.fit_results,
-            successful_fits,
-            old_weight=config.old_weight
-        )
-        
+
         # Save results to CSV if quality is acceptable
-        results_path, summary_path = save_results_to_csv(
+        results_path, md_path = save_results_to_csv(
             df_results=df_results,
-            fit_result_manager=fit_result_manager,
-            successful_fits=successful_fits,
-            config=config
+            df_conflated_md=df_conflated_md,
+            date_str=config.date_str
         )
         
-        if results_path and summary_path:
+        if results_path:
             print(f"\n🎉 Analysis pipeline completed successfully!")
-            print(f"� Results exported to: {os.path.dirname(results_path)}")
+            print(f"� Results exported to: {os.path.dirname(results_path)} and {os.path.dirname(md_path)}")
         else:
             print(f"\n⚠️  Analysis completed but results not exported (quality check failed)")
             

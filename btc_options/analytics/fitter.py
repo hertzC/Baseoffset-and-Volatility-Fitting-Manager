@@ -1,27 +1,25 @@
-from datetime import datetime, time
+from datetime import datetime
 from typing import Union
 import numpy as np
 from btc_options.analytics import Result
 from abc import ABC, abstractmethod
-import polars as pl
 
 from btc_options.analytics.maths import convert_paramter_into_rate
 from btc_options.data_managers.deribit_md_manager import DeribitMDManager
 from btc_options.data_managers.orderbook_deribit_md_manager import OrderbookDeribitMDManager
+from config_loader import Config
 
 
 class Fitter(ABC):
     """ Base Class for BaseOffset Fitter """
 
     def __init__(self, 
-                 symbol_manager: Union[DeribitMDManager, OrderbookDeribitMDManager], 
-                 minimum_strikes: int = 5, 
-                 cutoff_time_for_0DTE: time = time(hour=4)):
-        self._can_print = False
-        self.minimum_strikes = minimum_strikes
-        self.fit_results: list[Result] = []
-        self.cutoff_time_for_0DTE = cutoff_time_for_0DTE
+                 symbol_manager: Union[DeribitMDManager, OrderbookDeribitMDManager],
+                 config_loader: Config,):
         self.symbol_manager = symbol_manager
+        self.config_loader = config_loader
+        self._can_print = False
+        self.fit_results: list[Result] = []
         # Store original parameters for reset functionality
         self._original_params = {}
 
@@ -65,8 +63,7 @@ class Fitter(ABC):
     
     def check_if_cutoff_for_0DTE(self, expiry: str, timestamp: datetime, is_0dte: bool, spot: float, tau: float) -> tuple[bool, Result|None]:
         if is_0dte:
-           current_time = timestamp.time()
-           if current_time >= self.cutoff_time_for_0DTE:
+           if timestamp.hour >= self.config_loader.cutoff_hour_for_0DTE:
                # return the result for 0 base offset as it's expiring very soon
                 return True, Result(expiry=expiry,
                                     timestamp=timestamp,
