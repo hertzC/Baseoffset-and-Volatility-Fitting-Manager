@@ -47,9 +47,9 @@ class WLSRegressor(Fitter):
             raise ValueError("DataFrame is empty. Cannot fit model.")
         expiry = kwargs['expiry']
         timestamp = kwargs['timestamp']
-        S, tau = df["S"][0], df["tau"][0]
+        spot_value, tau = df["S"][0], df["tau"][0]
 
-        is_cutoff, result = self.check_if_cutoff_for_0DTE(expiry, timestamp, self.symbol_manager.is_expiry_today(expiry), S, tau)
+        is_cutoff, result = self.check_if_cutoff_for_0DTE(expiry, timestamp, self.symbol_manager.is_expiry_today(expiry), spot_value, tau)
 
         if not is_cutoff:                
             # Extract data and construct regression inputs
@@ -66,7 +66,7 @@ class WLSRegressor(Fitter):
             # Convert parameters to financial rates
             r2_adj, sse = float(model.rsquared_adj), float(model.ssr)            
 
-            result = self._convert_to_result(expiry, timestamp, model.params, S, tau, r2_adj, sse)
+            result = self._convert_to_result(expiry, timestamp, model.params, spot_value, tau, r2_adj, sse)
 
         self.fit_results.append(result)        
         return result

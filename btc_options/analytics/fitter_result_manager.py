@@ -5,21 +5,31 @@ from btc_options.analytics import Result
 
 
 class FitterResultManager:
-    def __init__(self, option_expiries: list[str], future_expiries: list[str], symbol_df: pl.DataFrame, fit_results: list[Result], successful_fits: dict[str, dict]):
+    def __init__(self, option_expiries: list[str], future_expiries: list[str], symbol_df: pl.DataFrame, fit_results: list[Result], successful_fits: dict[str, dict], old_weight: float = 0.95):
         self.opt_expiries = option_expiries
         self.future_expiries = future_expiries
+        self.old_weight = old_weight
         self.symbol_df = symbol_df[['expiry', 'expiry_ts']].unique()
         self.fit_results = fit_results
-        self.fit_result_per_expiry: dict[str, list[Result]] = {expiry: [] for expiry in option_expiries}
+        self.fit_result_per_expiry = self.organize_results_by_expiry()
         self.successful_fits = successful_fits
     
-    def organize_results_by_expiry(self):
+    def organize_results_by_expiry(self) -> dict[str, list[Result]]:
         """Organize fit results by expiry date."""
+        fit_results = {expiry: [] for expiry in self.opt_expiries}
         for result in self.fit_results:
-            if result['expiry'] in self.fit_result_per_expiry:
-                self.fit_result_per_expiry[result['expiry']].append(result)
-            else:
-                self.fit_result_per_expiry[result['expiry']] = [result]
+            expiry = result['expiry']
+            current_basis = result['r'] - result['q']
+            last_average_basis = fit_results[expiry][-1]['smoothened_r-q'] if len(fit_results[expiry]) > 0 else current_basis
+            result.update({'r-q': current_basis, 
+                           'smoothened_r-q': self.average_basis_smoothening(last_average_basis, current_basis) if result['success_fitting'] else last_average_basis})
+            fit_results[expiry].append(result)
+        return fit_results
+
+    def average_basis_smoothening(self, old_basis: float, new_basis: float) -> float:
+        """Apply exponential moving average to smoothen basis."""
+        return (1 - self.old_weight) * new_basis + self.old_weight * old_basis
+
 
     def get_expiry_summary(self, df: pl.DataFrame) -> pl.DataFrame:
         result = df.group_by('expiry').agg([
@@ -56,21 +66,28 @@ class FitterResultManager:
             values='len'
         ).join(self.symbol_df, on='expiry').sort('expiry_ts').drop('expiry_ts').fill_null(0)
     
+    def create_results_df(self, fit_results: list[Result], use_smoothened_basis: bool = True) -> pl.DataFrame:
+        print(f"Creating results DataFrame with {'smoothened' if use_smoothened_basis else 'raw'} basis")
+        df = pl.DataFrame(fit_results).with_columns(            
+            pl.col('r').round(4),
+            pl.col('q').round(4),
+            pl.col('r-q').round(4),
+            pl.col('smoothened_r-q').round(4),
+            pl.col('tau').round(4),
+            pl.col('sse').round(4),
+            pl.col('coef').round(4),
+            pl.col('const').round(2)
+        )
+        column_name = 'r-q' if not use_smoothened_basis else 'smoothened_r-q'
+        df = df.with_columns((pl.col(column_name) * pl.col('tau')).round(4) .alias('(r-q)*t'))
 
-    def create_results_df(self) -> pl.DataFrame:
-        return pl.DataFrame(self.fit_results).with_columns(
-            [pl.col(_col).round(4) for _col in ['tau','r','q','r2','sse']]
-        ).with_columns(
-            (pl.col('r') - pl.col('q')).alias('r-q')
-        ).with_columns(
-            ((pl.col('r') - pl.col('q')) * pl.col('tau')).round(4).alias('(r-q)*t')
-        ).with_columns(
+        return df.with_columns(
             (np.exp(pl.col('(r-q)*t')) * pl.col('S')).round(2).alias('F')
         ).with_columns(
             (pl.col('F') - pl.col('S')).alias('F-S'),
             (pl.col('F') / pl.col('S') - 1).round(4).alias('F/S-1')
         ).select(
-            ['expiry','timestamp','tau','r','q','r-q','(r-q)*t','S','F','F-S','F/S-1',
+            ['expiry','timestamp','tau','r','q','r-q','smoothened_r-q','(r-q)*t','S','F','F-S','F/S-1',
              'r2','sse','success_fitting','failure_reason','const','coef']
         ).join(
             self.symbol_df, on='expiry'

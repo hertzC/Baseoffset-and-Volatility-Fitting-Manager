@@ -55,7 +55,7 @@ class Fitter(ABC):
 
         return Result(
             expiry=expiry, timestamp=timestamp,
-            S=S, r=r, q=q, tau=tau,
+            S=S, r=float(r), q=float(q), tau=tau,
             r2=r2_adj, const=float(fitted_parameter[0]), coef=float(fitted_parameter[1]), sse=float(sse),
             success_fitting=True, failure_reason=''
         )
@@ -71,12 +71,12 @@ class Fitter(ABC):
                 return True, Result(expiry=expiry,
                                     timestamp=timestamp,
                                     S=spot,
-                                    r=0,
-                                    q=0,
+                                    r=0.0,
+                                    q=0.0,
                                     tau=tau,
                                     r2=np.nan,
                                     const=spot,
-                                    coef=0,
+                                    coef=0.0,
                                     success_fitting=False,
                                     failure_reason="too_close_to_expiry"                                                                  
                 )
