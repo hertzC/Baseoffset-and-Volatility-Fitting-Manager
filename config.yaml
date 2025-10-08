@@ -1,0 +1,154 @@
+# Bitcoin Options Analysis Configuration
+# Configuration file for Bitcoin options put-call parity regression analysis
+
+# Data Configuration
+data:
+  # Date string in YYYYMMDD format
+  date_str: "20240229"
+  
+  # Data source configuration
+  # Set to true for order book depth data, false for best bid/offer (BBO) data
+  use_orderbook_data: true
+  
+  # Which orderbook level to use (0=best, 1=second best, etc.)
+  # Only used when use_orderbook_data is true
+  orderbook_level: 0
+
+# Market Data Processing
+market_data:
+  # Data conflation settings
+  conflation:
+    # Time interval for conflation (e.g., "1m", "5m", "15m")
+    every: "1m"
+    
+    # Lookback period for conflation (e.g., "5m", "10m", "15m")
+    period: "10m"
+  
+  # Price widening factor for spread tightening
+  price_widening_factor: 0.00025
+
+# Analysis Configuration
+analysis:
+  # Single point analysis settings
+  single_analysis:
+    # Example expiry to analyze (DDMMMYY format)
+    expiry: "27DEC24"
+    
+    # Analysis timestamp (YYYY, M, D, H, M, S)
+    timestamp:
+      year: 2024
+      month: 2
+      day: 29
+      hour: 12
+      minute: 34
+      second: 0
+  
+  # Time series analysis settings
+  time_series:
+    # Whether to use constrained optimization (true) or WLS only (false)
+    use_constrained_optimization: true
+    
+    # Time interval between analysis points in minutes
+    time_interval_minutes: 1
+    
+    # Minimum number of strikes required for valid analysis
+    minimum_strikes: 3
+
+# Fitting Algorithm Parameters
+fitting:
+  # WLS (Weighted Least Squares) settings
+  wls:
+    # Enable verbose output for WLS fitting
+    printable: false
+  
+  # Nonlinear optimization settings
+  nonlinear:
+    # Enable verbose output for nonlinear fitting
+    printable: false
+    
+    # Future spread multiplier for constraint widening
+    future_spread_mult: 0.0020
+    
+    # Lambda regularization parameter
+    lambda_reg: 500.0
+    
+    # Rate constraints (in decimal format, e.g., 0.05 = 5%)
+    constraints:
+      # USD interest rate bounds
+      r_min: -0.05
+      r_max: 0.10
+      
+      # BTC funding rate bounds  
+      q_min: -0.30
+      q_max: 1.00
+
+# Result Management
+results:
+  # Exponential smoothing configuration
+  smoothing:
+    # Old weight parameter for exponential smoothing (0.0 to 1.0)
+    # Higher values give more weight to previous values
+    old_weight: 0.95
+  
+  # CSV export quality thresholds
+  export:
+    # Minimum success rate (percentage) to export results
+    min_success_rate: 50.0
+    
+    # Minimum total number of results to export
+    min_total_results: 100
+    
+    # Export directory name
+    export_dir: "exports"
+
+# Display and Output Settings
+display:
+  # Polars DataFrame display settings
+  polars:
+    # Maximum number of rows to display
+    max_rows: 20
+  
+  # Plotly visualization settings
+  plotly:
+    # Default renderer for Plotly ("notebook", "browser", etc.)
+    renderer: "notebook"
+  
+  # Progress reporting
+  progress:
+    # Enable detailed progress reporting
+    verbose: true
+    
+    # Report progress every N processed items
+    report_interval: 100
+
+# Paths and File Management
+paths:
+  # Data directories
+  data_bbo: "data_bbo"
+  data_orderbook: "data_orderbook"
+  
+  # Notebook directory
+  notebooks: "notebooks"
+  
+  # Common modules directory
+  common: "common"
+  
+  # Default data file pattern (will be formatted with date_str)
+  data_file_pattern_bbo: "{data_dir}/{date_str}.market_updates.log"
+  data_file_pattern_orderbook: "{data_dir}/{date_str}.output.csv.gz"
+
+# Development and Testing
+development:
+  # Enable development mode features
+  debug_mode: false
+  
+  # Suppress warnings
+  suppress_warnings: true
+  
+  # Test mode settings
+  test_mode:
+    # Use sample data instead of real data files
+    use_sample_data: false
+    
+    # Reduce analysis scope for faster testing
+    quick_analysis: false

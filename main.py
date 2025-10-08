@@ -8,24 +8,56 @@ and basis calculations using put-call parity regression.
 Main components:
 - Market data processing from Deribit
 - Option chain construction and spread tightening
-- Put-call parity regression (WLS and constrained optimization)
-- Interactive visualization of results
+    # Load market data
+    data_file = config.get_data_file_path()
+    
+    df_md = load_market_data(config, data_file)
+    print(f"📊 Loaded market data with {df_md.collect().height:,} records")
+    
+    # Initialize managers
+    if config.use_orderbook_data:
+        symbol_manager = OrderbookDeribitMDManager()
+        print("🔧 Using OrderBook data manager")
+    else:
+        symbol_manager = DeribitMDManager()
+        print("🔧 Using BBO data manager")
+    
+    wls_regressor = WLSRegressor(symbol_manager)
+    nonlinear_minimizer = NonlinearMinimization(symbol_manager)
+    
+    # Apply configuration to fitting algorithms
+    wls_regressor.set_printable(config.get('fitting.wls.printable', False))
+    nonlinear_minimizer.set_printable(config.get('fitting.nonlinear.printable', False))
+    nonlinear_minimizer.future_spread_mult = config.future_spread_mult
+    nonlinear_minimizer.lambda_reg = config.lambda_reg
+    
+    # Apply rate constraints if configured
+    rate_constraints = config.get_rate_constraints()
+    print(f"📋 Rate constraints: r ∈ [{rate_constraints['r_min']:.1%}, {rate_constraints['r_max']:.1%}], "
+          f"q ∈ [{rate_constraints['q_min']:.1%}, {rate_constraints['q_max']:.1%}]") regression (WLS and constrained optimization)
+- CSV export of results for production use
 """
 
 import polars as pl
+import numpy as np
 from datetime import datetime, timedelta
 import os
 import sys
+import warnings
+
+# Import configuration loader
+from config_loader import load_config, ConfigurationError
 
 # Import project modules from btc_options
 from btc_options.data_managers.deribit_md_manager import DeribitMDManager
 from btc_options.data_managers.orderbook_deribit_md_manager import OrderbookDeribitMDManager
-from btc_options.visualization.plotly_manager import PlotlyManager
 from btc_options.analytics.weight_least_square_regressor import WLSRegressor
 from btc_options.analytics.nonlinear_minimization import NonlinearMinimization
+from btc_options.analytics.fitter_result_manager import FitterResultManager
+from btc_options.analytics.maths import convert_rate_into_parameter
 
 
-def load_market_data(date_str: str, data_file: str, use_orderbook_data: bool = False) -> pl.LazyFrame:
+def load_market_data(config, data_file: str) -> pl.LazyFrame:
     """
     Load Deribit market data from CSV file.
     
@@ -37,17 +69,19 @@ def load_market_data(date_str: str, data_file: str, use_orderbook_data: bool = F
     Returns:
         LazyFrame with market data or sample data if file not found
     """
+    # Check if file exists first
+    if not os.path.exists(data_file):
+        print(f"❌ Data file not found: {data_file}")
+        print(f"💡 Please ensure the data file exists and is accessible")
+        sys.exit(1)
+        
+    # Load data - both types use the same lazy loading approach
+    if config.use_orderbook_data:
+        print(f"📖 Loading order book depth data from {data_file}")
+    else:
+        print(f"📈 Loading BBO data from {data_file}")
+        
     try:
-        # Check if file exists first
-        if not os.path.exists(data_file):
-            raise FileNotFoundError(f"Data file not found: {data_file}")
-            
-        # Load data - both types use the same lazy loading approach
-        if use_orderbook_data:
-            print(f"📖 Loading order book depth data from {data_file}")
-        else:
-            print(f"📈 Loading BBO data from {data_file}")
-            
         df_market_updates = pl.scan_csv(data_file)
         
         # Validate data structure
@@ -56,296 +90,370 @@ def load_market_data(date_str: str, data_file: str, use_orderbook_data: bool = F
         return df_market_updates
         
     except Exception as e:
-        print(f"⚠️  Error loading data from {data_file}: {e}")
-        print("📝 Creating sample data for demonstration...")
-        
-        # Create realistic sample data structure
-        sample_data = pl.LazyFrame({
-            "symbol": [
-                "BTC-29FEB24-60000-C", "BTC-29FEB24-60000-P",
-                "BTC-29FEB24-65000-C", "BTC-29FEB24-65000-P", 
-                "INDEX", "BTC-29FEB24"
-            ],
-            "timestamp": [
-                "08:00:00.000", "08:00:00.000", "08:00:00.000", 
-                "08:00:00.000", "08:00:00.000", "08:00:00.000"
-            ],
-            "bid_price": [0.05, 0.02, 0.03, 0.04, 62000.0, 62500.0],
-            "ask_price": [0.06, 0.03, 0.04, 0.05, 62000.0, 62600.0]
-        })
-        print("📊 Using sample data for demonstration")
-        return sample_data
+        print(f"❌ Error loading data from {data_file}: {e}")
+        print(f"� Please check the file format and ensure it contains valid CSV data")
+        sys.exit(1)
 
 
-def analyze_single_expiry(symbol_manager: DeribitMDManager, 
-                         plotly_manager: PlotlyManager,
-                         wls_regressor: WLSRegressor,
-                         nonlinear_minimizer: NonlinearMinimization,
-                         df_conflated_md: pl.DataFrame, 
-                         expiry: str, 
-                         timestamp: datetime,
-                         verbose: bool = True) -> dict:
+def run_comprehensive_analysis(symbol_manager: DeribitMDManager,
+                              wls_regressor: WLSRegressor, 
+                              nonlinear_minimizer: NonlinearMinimization,
+                              df_conflated_md: pl.DataFrame,
+                              use_constrained_optimization: bool = True,
+                              time_interval_minutes: int = 5) -> tuple[pl.DataFrame, dict]:
     """
-    Analyze a single expiry at a specific timestamp.
+    Run comprehensive time series analysis across all expiries using notebook logic.
     
     Args:
         symbol_manager: Market data manager
-        plotly_manager: Visualization manager
         wls_regressor: WLS regression fitter
         nonlinear_minimizer: Constrained optimization fitter
         df_conflated_md: Conflated market data
-        expiry: Option expiry to analyze
-        timestamp: Analysis timestamp
-        verbose: Whether to print detailed output
+        use_constrained_optimization: Whether to use constrained optimization
+        time_interval_minutes: Minutes between analysis points
         
     Returns:
-        Dictionary with analysis results or None if failed
+        Tuple of (results DataFrame, success statistics)
     """
-    if verbose:
-        print(f"📈 Analyzing expiry: {expiry} at time: {timestamp}")
+    print(f"🚀 Starting comprehensive analysis across all expiries...")
+    print(f"🎯 Mode: {'Constrained Optimization' if use_constrained_optimization else 'WLS Only'}")
+    print(f"⏱️  Sampling interval: {time_interval_minutes} minutes")
     
-    try:
-        # Create option synthetic data
-        df_option_chain, df_modified_option_chain, df_option_synthetic = symbol_manager.create_option_synthetic(
-            df_conflated_md, expiry=expiry, timestamp=timestamp
-        )
-        
-        if df_option_synthetic.is_empty():
-            if verbose:
-                print(f"⚠️  No synthetic data available for {expiry} at {timestamp}")
-            return None
-            
-        if verbose:
-            print(f"📊 Option chain size: {len(df_option_chain)}")
-            print(f"🔧 Synthetic data size: {len(df_option_synthetic)}")
-        
-        # WLS Regression
-        wls_result = wls_regressor.fit(df_option_synthetic)
-        
-        if verbose:
-            print(f"💰 USD Interest Rate (r): {wls_result['r']:.4f}")
-            print(f"₿  BTC Funding Rate (q): {wls_result['q']:.4f}")
-            print(f"📊 Forward Price (F): {wls_result['F']:.2f}")
-            print(f"📈 R-squared: {wls_result['r2']:.4f}")
-        
-        # Try constrained optimization
-        try:
-            constrained_result = nonlinear_minimizer.fit(
-                df_option_synthetic, wls_result['const'], wls_result['coef']
-            )
-            
-            if verbose:
-                print(f"🎯 Constrained Forward Price: {constrained_result['F']:.2f}")
-                print(f"📊 Constrained R-squared: {constrained_result['r2']:.4f}")
-                
-            # Use constrained result if better
-            final_result = constrained_result if constrained_result['r2'] > wls_result['r2'] else wls_result
-            
-        except ValueError as e:
-            if verbose:
-                print(f"⚠️  Constrained optimization failed: {e}")
-            final_result = wls_result
-        
-        # Add metadata
-        result = {
-            'expiry': expiry,
-            'timestamp': timestamp,
-            'synthetic_count': len(df_option_synthetic),
-            **final_result
-        }
-        
-        return result
-        
-    except Exception as e:
-        if verbose:
-            print(f"❌ Error analyzing {expiry}: {e}")
-        return None
-
-
-def run_time_series_analysis(symbol_manager: DeribitMDManager,
-                           plotly_manager: PlotlyManager,
-                           wls_regressor: WLSRegressor, 
-                           nonlinear_minimizer: NonlinearMinimization,
-                           df_conflated_md: pl.DataFrame,
-                           start_time: datetime = None,
-                           end_time: datetime = None,
-                           interval_minutes: int = 5) -> pl.DataFrame:
-    """
-    Run time series analysis across multiple timestamps.
-    
-    Args:
-        symbol_manager: Market data manager
-        plotly_manager: Visualization manager  
-        wls_regressor: WLS regression fitter
-        nonlinear_minimizer: Constrained optimization fitter
-        df_conflated_md: Conflated market data
-        start_time: Analysis start time
-        end_time: Analysis end time  
-        interval_minutes: Minutes between analysis points
-        
-    Returns:
-        DataFrame with time series results
-    """
-    if not symbol_manager.opt_expiries:
-        print("⚠️  No option expiries available for time series analysis")
-        return pl.DataFrame()
-    
-    # Default time range
-    if start_time is None:
-        start_time = datetime(2024, 2, 29, 8, 0, 0)
-    if end_time is None:
-        end_time = datetime(2024, 2, 29, 16, 0, 0)
-    
-    print(f"🕒 Running time series analysis from {start_time} to {end_time}")
-    print(f"📊 Analyzing expiries: {symbol_manager.opt_expiries}")
-    
-    results = []
-    minimum_strikes = 3
+    # Configuration
+    successful_fits = {}
+    fitter = nonlinear_minimizer if use_constrained_optimization else wls_regressor
     
     # Disable verbose output for time series
     wls_regressor.set_printable(False)
+    nonlinear_minimizer.reset_parameters()
+    nonlinear_minimizer.clear_results()
+    nonlinear_minimizer.future_spread_mult = 0.0020
     nonlinear_minimizer.set_printable(False)
+    nonlinear_minimizer.lambda_reg = 500.0
     
-    for expiry in symbol_manager.opt_expiries:
-        print(f"\n📈 Processing expiry: {expiry}")
-        prev_const, prev_coef = -62000, 1.0  # Initial guess
-        
-        current_time = start_time
-        expiry_results = 0
-        
-        while current_time <= end_time:
-            result = analyze_single_expiry(
-                symbol_manager, plotly_manager, wls_regressor, nonlinear_minimizer,
-                df_conflated_md, expiry, current_time, verbose=False
-            )
-            
-            if result and result['synthetic_count'] >= minimum_strikes:
-                results.append(result)
-                prev_const, prev_coef = result['const'], result['coef']
-                expiry_results += 1
-            
-            current_time += timedelta(minutes=interval_minutes)
-        
-        print(f"✅ Collected {expiry_results} valid results for {expiry}")
+    # Calculate time ranges for each expiry
+    start_time_map = {
+        each['expiry']: each for each in df_conflated_md.group_by('expiry').agg(
+            pl.col('timestamp').first().alias('start_time'),
+            pl.col('timestamp').last().alias('end_time')
+        ).to_dicts()
+    }
     
-    if results:
-        df_results = pl.DataFrame(results).with_columns(
-            (pl.col('r') - pl.col('q')).alias('r-q'),
-            base_offset=pl.col('F') - pl.col('S')
-        )
-        print(f"🎉 Time series analysis complete: {len(results)} total results")
-        return df_results
-    else:
-        print("❌ No valid results collected")
-        return pl.DataFrame()
+    print(f"📊 Processing {len(symbol_manager.opt_expiries)} expiries...")
+    
+    try:
+        # Process each expiry
+        for expiry in symbol_manager.opt_expiries:
+            print(f"\n🔄 Processing expiry: {expiry}")
+            successful_fits[expiry] = {'total': 0, 'successful': 0}
+            
+            # Calculate time range for this expiry
+            start_time = start_time_map[expiry]['start_time'] + timedelta(minutes=time_interval_minutes)
+            if symbol_manager.is_expiry_today(expiry):
+                end_time = start_time.replace(hour=7, minute=0, second=0)
+            else:
+                end_time = start_time.replace(hour=23, minute=59, second=0)
+            
+            sampled_timestamps = pl.datetime_range(
+                start=start_time, 
+                end=end_time, 
+                interval=f"{time_interval_minutes}m", 
+                eager=True
+            ).to_list()
+            
+            print(f"   � Time range: {start_time} to {end_time}")
+            print(f"   🕒 Total timestamps: {len(sampled_timestamps)}")
+            
+            # Initialize per-expiry variables
+            initial_guess = None
+            
+            # Process each timestamp for this expiry
+            for ts in sampled_timestamps:
+                try:
+                    successful_fits[expiry]['total'] += 1
+                    
+                    # Create option synthetic data for this timestamp
+                    df_chain, df_synthetic = symbol_manager.create_option_synthetic(
+                        df_conflated_md, expiry=expiry, timestamp=ts
+                    )
+                    
+                    if not df_synthetic.is_empty():
+                        result = None
+                        tau, s0 = df_synthetic['tau'][0], df_synthetic['S'][0]
+                        
+                        # Check if we should use cutoff for 0DTE
+                        is_cutoff, cutoff_result = fitter.check_if_cutoff_for_0DTE(
+                            expiry, ts, symbol_manager.is_expiry_today(expiry), s0, tau
+                        )
+                        
+                        if is_cutoff:
+                            result = cutoff_result
+                            continue
+                        
+                        # Perform fitting based on mode
+                        if use_constrained_optimization:
+                            # Initialize with WLS if needed
+                            if initial_guess is None or (np.isnan(initial_guess[0]) and np.isnan(initial_guess[1])):
+                                wls_temp_result = wls_regressor.fit(df_synthetic, expiry=expiry, timestamp=ts)
+                                initial_guess = (wls_temp_result['r'], wls_temp_result['q'])
+                            
+                            # Convert rates to parameters
+                            initial_guess_const, initial_guess_coef = convert_rate_into_parameter(initial_guess, s0, tau)
+                            
+                            # Constrained optimization
+                            result = fitter.fit(df_synthetic, initial_guess_const, initial_guess_coef, expiry=expiry, timestamp=ts)
+                            initial_guess = (result['r'], result['q'])
+                        else:
+                            # WLS only mode
+                            result = fitter.fit(df_synthetic, expiry=expiry, timestamp=ts)
+                        
+                        if result and result['success_fitting']:
+                            successful_fits[expiry]['successful'] += 1
+                    else:
+                        # Skip empty synthetic data
+                        continue
+                        
+                except Exception as e:
+                    print(f"   ⚠️  Error at {ts}: {e}")
+                    continue
+            
+            success_rate = (successful_fits[expiry]['successful'] / successful_fits[expiry]['total']) * 100 if successful_fits[expiry]['total'] > 0 else 0
+            print(f"   ✅ Completed: {successful_fits[expiry]['successful']}/{successful_fits[expiry]['total']} successful fits ({success_rate:.1f}%)")
+    
+    except Exception as e:
+        print(f"❌ Error in comprehensive analysis: {e}")
+        raise
+    
+    # Create results using FitterResultManager
+    print(f"\n📊 Creating results DataFrame...")
+    fit_result_manager = FitterResultManager(
+        symbol_manager.opt_expiries, 
+        symbol_manager.fut_expiries, 
+        fitter.symbol_manager.df_symbol,
+        fitter.fit_results, 
+        successful_fits, 
+        old_weight=0.95
+    )
+    
+    df_results = fit_result_manager.create_results_df(fit_result_manager.fit_results).sort('timestamp')
+    
+    total_results = len(df_results)
+    successful_results = len(df_results.filter(pl.col('success_fitting') == True))
+    
+    print(f"✅ Analysis complete!")
+    print(f"   📈 Total results: {total_results:,}")
+    print(f"   ✅ Successful fits: {successful_results:,}")
+    print(f"   📊 Success rate: {(successful_results/total_results)*100:.1f}%")
+    
+    return df_results, successful_fits
+
+
+def save_results_to_csv(df_results: pl.DataFrame, 
+                       fit_result_manager: FitterResultManager,
+                       successful_fits: dict,
+                       date_str: str,
+                       use_constrained: bool = True) -> tuple[str, str]:
+    """
+    Save analysis results to CSV files if quality is acceptable.
+    
+    Args:
+        df_results: Results DataFrame
+        fit_result_manager: Manager for result processing
+        successful_fits: Success statistics
+        date_str: Date string for filename
+        use_constrained: Whether constrained optimization was used
+        
+    Returns:
+        Tuple of (results_path, summary_path) if saved, otherwise (None, None)
+    """
+    if df_results.is_empty():
+        print("❌ No results to save - DataFrame is empty")
+        return None, None
+    
+    # Check data quality
+    total_results = len(df_results)
+    successful_results = len(df_results.filter(pl.col('success_fitting') == True))
+    success_rate = (successful_results / total_results) * 100 if total_results > 0 else 0
+    
+    # Quality thresholds
+    min_success_rate = 50.0  # Minimum 50% success rate
+    min_total_results = 100  # Minimum 100 total observations
+    
+    print(f"\n� Data Quality Check:")
+    print(f"   📊 Total results: {total_results:,}")
+    print(f"   ✅ Successful fits: {successful_results:,}")
+    print(f"   📈 Success rate: {success_rate:.1f}%")
+    print(f"   🎯 Quality thresholds: {min_success_rate}% success, {min_total_results} min results")
+    
+    if success_rate < min_success_rate:
+        print(f"❌ Quality check failed: Success rate {success_rate:.1f}% below threshold {min_success_rate}%")
+        return None, None
+    
+    if total_results < min_total_results:
+        print(f"❌ Quality check failed: Total results {total_results} below threshold {min_total_results}")
+        return None, None
+    
+    print("✅ Quality check passed - proceeding with CSV export")
+    
+    # Create exports directory
+    exports_dir = "exports"
+    os.makedirs(exports_dir, exist_ok=True)
+    
+    # Generate timestamped filenames
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    method = "constrained" if use_constrained else "wls"
+    
+    results_filename = f"bitcoin_options_results_{date_str}_{method}_{timestamp}.csv"
+    summary_filename = f"bitcoin_options_summary_{date_str}_{method}_{timestamp}.csv"
+    
+    results_path = os.path.join(exports_dir, results_filename)
+    summary_path = os.path.join(exports_dir, summary_filename)
+    
+    try:
+        # Save main results
+        df_results.write_csv(results_path)
+        
+        # Generate and save summary
+        df_summary = fit_result_manager.get_expiry_summary(df_results)
+        df_summary.write_csv(summary_path)
+        
+        print(f"\n💾 Files saved successfully:")
+        print(f"   📊 Results: {results_filename}")
+        print(f"   📋 Summary: {summary_filename}")
+        print(f"   📁 Location: {os.path.abspath(exports_dir)}")
+        
+        # Display key metrics
+        print(f"\n🎯 Key Results Summary:")
+        avg_r = df_results.filter(pl.col('success_fitting') == True)['r'].mean() * 100
+        avg_q = df_results.filter(pl.col('success_fitting') == True)['q'].mean() * 100
+        avg_spread = df_results.filter(pl.col('success_fitting') == True)['r-q'].mean() * 100
+        avg_r2 = df_results.filter(pl.col('success_fitting') == True)['r2'].mean()
+        
+        print(f"   💰 Average USD rate (r): {avg_r:.2f}%")
+        print(f"   ₿  Average BTC rate (q): {avg_q:.2f}%")
+        print(f"   📊 Average rate spread: {avg_spread:.2f}%")
+        print(f"   📈 Average R²: {avg_r2:.4f}")
+        
+        return results_path, summary_path
+        
+    except Exception as e:
+        print(f"❌ Error saving CSV files: {e}")
+        return None, None
 
 
 def main():
-    """Main entry point for the base offset fitter application."""
+    """
+    Main analysis pipeline using notebook-style comprehensive fitting approach.
+    """
     print("=" * 60)
     print("🚀 Base Offset Fitter - Cryptocurrency Options Analytics")
     print("=" * 60)
     print("📊 Analyzing Bitcoin options using put-call parity regression")
     print()
     
-    # Configuration
-    date_str = "20240229"  # YYYYMMDD format
-    use_orderbook_data = False  # Set True to use order book depth data, False for BBO data
-    conflation_every = "1m"   # 1-minute intervals
-    conflation_period = "10m" # 10-minute lookback
-    
-    # Determine data source based on configuration
-    if use_orderbook_data:
-        data_dir = "data_orderbook"
-        data_type = "Order Book Depth"
-    else:
-        data_dir = "data_bbo"
-        data_type = "Best Bid/Offer (BBO)"
-    
-    data_file = f'{data_dir}/{date_str}.market_updates-1318071-20250916.log'
-    
+    # Load configuration
     try:
-        # 1. Load market data
-        print("🔄 Step 1: Loading market data...")
-        print(f"📂 Data source: {data_type} from {data_dir}/")
-        df_market_updates = load_market_data(date_str, data_file)
-        
-        # 2. Initialize components
-        print("\n🔧 Step 2: Initializing analysis components...")
-        # Initialize symbol manager with appropriate class
-        if use_orderbook_data:
-            orderbook_level = 0  # Use best bid/ask (level 0)
-            print(f"🔧 Using OrderbookDeribitMDManager for orderbook data conversion")
-            print(f"   - Level: {orderbook_level} ({'best' if orderbook_level == 0 else f'{orderbook_level}th best'})")
-            symbol_manager = OrderbookDeribitMDManager(df_market_updates, date_str, level=orderbook_level)
-        else:
-            print("🔧 Using standard DeribitMDManager for BBO data")
-            symbol_manager = DeribitMDManager(df_market_updates, date_str)
-        wls_regressor = WLSRegressor()
-        nonlinear_minimizer = NonlinearMinimization()  # Rate constraints: r ∈ [-5%, +10%], q ∈ [-30%, +100%]
-        
-        # For custom rate constraints in optimization, use:
-        # nonlinear_minimizer = NonlinearMinimization(r_min=-0.02, r_max=0.08, q_min=-0.10, q_max=0.50)
-        plotly_manager = PlotlyManager(date_str, symbol_manager.fut_expiries)
-        
-        print(f"📊 Available option expiries: {symbol_manager.opt_expiries}")
-        print(f"🔮 Available future expiries: {symbol_manager.fut_expiries}")
-        
-        # 3. Process market data
-        print(f"\n⚙️  Step 3: Conflating market data (freq={conflation_every}, period={conflation_period})...")
-        df_conflated_md = symbol_manager.get_conflated_md(
-            freq=conflation_every, 
-            period=conflation_period
-        )
-        print(f"📈 Conflated data shape: {df_conflated_md.shape}")
-        
-        # 4. Single timestamp analysis (demonstration)
-        if symbol_manager.opt_expiries:
-            print(f"\n🎯 Step 4: Single timestamp analysis...")
-            expiry = symbol_manager.opt_expiries[0]
-            timestamp = datetime(2024, 2, 29, 8, 21, 0)
-            
-            wls_regressor.set_printable(True)
-            nonlinear_minimizer.set_printable(True)
-            
-            result = analyze_single_expiry(
-                symbol_manager, plotly_manager, wls_regressor, nonlinear_minimizer,
-                df_conflated_md, expiry, timestamp
-            )
-            
-            if result:
-                print(f"✅ Single analysis completed successfully")
-            else:
-                print(f"⚠️  Single analysis returned no results")
-        
-        # 5. Time series analysis (optional)
-        print(f"\n📊 Step 5: Time series analysis...")
-        print("💡 For full time series analysis with real data:")
-        print("   - Uncomment the time series section below")
-        print("   - Ensure you have sufficient market data")
-        print("   - Adjust time ranges as needed")
-        
-        # Uncomment for time series analysis:
-        # df_time_series = run_time_series_analysis(
-        #     symbol_manager, plotly_manager, wls_regressor, nonlinear_minimizer,
-        #     df_conflated_md,
-        #     start_time=datetime(2024, 2, 29, 8, 0, 0),
-        #     end_time=datetime(2024, 2, 29, 16, 0, 0),
-        #     interval_minutes=5
-        # )
-        
-        print(f"\n🎉 Analysis completed successfully!")
-        print("📝 Next steps:")
-        print("   1. Add real Deribit data files to data_bbo/ or data_orderbook/ directory")
-        print("   2. Run the Jupyter notebook for interactive analysis")
-        print("   3. Modify parameters for your specific use case")
-        print("   4. Enable time series analysis for comprehensive results")
-        
-    except Exception as e:
-        print(f"\n❌ Error in main analysis: {e}")
-        print("💡 Make sure all dependencies are installed and data is available")
+        config = load_config()
+        print(f"✅ Configuration loaded successfully")
+        print(f"📅 Analysis date: {config.date_str}")
+        print(f"📊 Data source: {'Order book depth' if config.use_orderbook_data else 'Best bid/offer'}")
+    except ConfigurationError as e:
+        print(f"❌ Configuration error: {e}")
         sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error loading configuration: {e}")
+        sys.exit(1)
+    
+    print(f"⚙️  Configuration Summary:")
+    print(f"   🔧 Conflation: every {config.conflation_every}, period {config.conflation_period}")
+    print(f"   🎯 Method: {'Constrained optimization' if config.use_constrained_optimization else 'WLS only'}")
+    print(f"   ⏱️  Sampling interval: {config.time_interval_minutes} minutes")
+    print(f"   🎚️  Smoothing weight: {config.old_weight}")
+    
+    # Load market data
+    data_file = config.get_data_file_path()
+    
+    df_md = load_market_data(config, data_file)
+    print(f"� Loaded market data with {df_md.collect().height:,} records")
+    
+    # Initialize managers
+    if config.use_orderbook_data:
+        symbol_manager = OrderbookDeribitMDManager()
+        print("🔧 Using OrderBook data manager")
+    else:
+        symbol_manager = DeribitMDManager()
+        print("🔧 Using BBO data manager")
+    
+    wls_regressor = WLSRegressor(symbol_manager)
+    nonlinear_minimizer = NonlinearMinimization(symbol_manager)
+    
+    # Conflate market data
+    print(f"\n🔄 Conflating market data...")
+    df_conflated_md = symbol_manager.conflate_market_data(
+        df_md, every=config.conflation_every, period=config.conflation_period
+    ).sort(['expiry', 'timestamp'])
+    
+    print(f"✅ Conflated data: {len(df_conflated_md):,} records")
+    print(f"📈 Available expiries: {len(symbol_manager.opt_expiries)} option, {len(symbol_manager.fut_expiries)} future")
+    print(f"   Options: {symbol_manager.opt_expiries}")
+    print(f"   Futures: {symbol_manager.fut_expiries}")
+    
+    # Run comprehensive analysis
+    try:
+        df_results, successful_fits = run_comprehensive_analysis(
+            symbol_manager=symbol_manager,
+            wls_regressor=wls_regressor,
+            nonlinear_minimizer=nonlinear_minimizer, 
+            df_conflated_md=df_conflated_md,
+            use_constrained_optimization=config.use_constrained_optimization,
+            time_interval_minutes=config.time_interval_minutes
+        )
+        
+        if df_results.is_empty():
+            print("❌ No results generated - analysis failed")
+            return
+        
+        print(f"\n📊 Analysis Results Summary:")
+        total_fits = len(df_results)
+        successful_fits_count = len(df_results.filter(pl.col('success_fitting') == True))
+        print(f"   📈 Total fits attempted: {total_fits:,}")
+        print(f"   ✅ Successful fits: {successful_fits_count:,}")
+        print(f"   📊 Overall success rate: {(successful_fits_count/total_fits)*100:.1f}%")
+        
+        # Create result manager for smoothing and export
+        fit_result_manager = FitterResultManager(
+            symbol_manager.opt_expiries,
+            symbol_manager.fut_expiries,
+            symbol_manager.df_symbol,
+            nonlinear_minimizer.fit_results if config.use_constrained_optimization else wls_regressor.fit_results,
+            successful_fits,
+            old_weight=config.old_weight
+        )
+        
+        # Save results to CSV if quality is acceptable
+        results_path, summary_path = save_results_to_csv(
+            df_results=df_results,
+            fit_result_manager=fit_result_manager,
+            successful_fits=successful_fits,
+            config=config
+        )
+        
+        if results_path and summary_path:
+            print(f"\n🎉 Analysis pipeline completed successfully!")
+            print(f"� Results exported to: {os.path.dirname(results_path)}")
+        else:
+            print(f"\n⚠️  Analysis completed but results not exported (quality check failed)")
+            
+    except Exception as e:
+        print(f"❌ Critical error in analysis pipeline: {e}")
+        import traceback
+        traceback.print_exc()
+        
+    print(f"\n✨ Pipeline finished!")
 
 
 if __name__ == "__main__":
+    # Suppress warnings for cleaner output
+    warnings.filterwarnings('ignore')
+    
     main()
