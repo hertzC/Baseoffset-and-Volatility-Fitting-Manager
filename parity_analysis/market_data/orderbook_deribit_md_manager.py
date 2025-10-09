@@ -28,7 +28,7 @@ class OrderbookDeribitMDManager(DeribitMDManager):
     - Optional volume normalization: USD → BTC for futures/perpetuals using index_price
     - Symbol-aware processing: only normalizes futures and perpetuals, leaves options unchanged
     """
-    CONFLATION_COLUMNS = ['bid_price', 'ask_price', 'bid_size', 'ask_size', 'index_price']
+    CONFLATION_COLUMNS = ['bid_price', 'ask_price', 'bid_size', 'ask_size']
 
     def __init__(self, df_orderbook: pl.LazyFrame, date_str: str, config_loader: Config):
         """
@@ -90,15 +90,13 @@ class OrderbookDeribitMDManager(DeribitMDManager):
         
         # Convert to BBO format
         bbo_data = df_orderbook.select([
-            pl.col('timestamp').alias('exchange_timestamp'), # Use timestamp as exchange_timestamp
-            pl.col('local_timestamp').alias('timestamp'),  
+            'timestamp',
             'symbol',
             pl.col(bid_price_col).alias('bid_price'),
             pl.col(ask_price_col).alias('ask_price'),
             # Keep the amounts and index_price for volume normalization
             pl.col(bid_amount_col).alias('bid_size'),
-            pl.col(ask_amount_col).alias('ask_size'),
-            pl.col('index_price')  # Keep index_price for volume normalization
+            pl.col(ask_amount_col).alias('ask_size')
         ])
         # Note: Removed filtering for null/zero prices to preserve empty orderbook entries
         
@@ -170,8 +168,8 @@ class OrderbookDeribitMDManager(DeribitMDManager):
         
         print(f"✅ Normalized volumes for {normalized_count}/{total_futures_perps} futures/perpetual symbols")
         
-        return df_normalized
-    
+        return df_normalized  
+
     def get_conflated_md(self, freq, period) -> pl.DataFrame:
         """
         Override to add orderbook-to-BBO conversion and volume normalization.
@@ -195,8 +193,6 @@ class OrderbookDeribitMDManager(DeribitMDManager):
             ask_price = np.array(ask_vwap, dtype=np.float64),
             bid_size = np.array(bid_size, dtype=np.float64),
             ask_size = np.array(ask_size, dtype=np.float64)
-        ).rename(
-            {'timestamp': 'exchange_timestamp', 'local_timestamp': 'timestamp'}
         ).select(temp_option.columns)
 
         # lazy_df = self.lazy_df.collect().pipe(lambda df: self.convert_orderbook_to_bbo(df, self.num_of_level)).lazy()
@@ -207,10 +203,17 @@ class OrderbookDeribitMDManager(DeribitMDManager):
         
         # Use parent's conflation logic but with our extended columns
         df = super()._get_conflated_md(parsed_lazy_df, freq, period)
-        df = self.normalize_volume_to_btc(df)
-        
+
+        # join with index_price on exchange_timestamp
+        df_index_price = self.with_parsed_timestamps(self.lazy_df.select(['timestamp','index_price']).unique()).collect()
+        df = df.join(
+            df_index_price,
+            on='timestamp',
+            how='left'
+        )
+
         # Join symbol information and enrich (inline the removed join_symbol_info method)
-        df = df.join(self.df_symbol, on='symbol', how='left')
+        df = self.normalize_volume_to_btc(df).join(self.df_symbol, on='symbol', how='left')
         return self.enrich_conflated_md(df)
     
     def with_parsed_timestamps(self, lazy_df: pl.LazyFrame) -> pl.LazyFrame:

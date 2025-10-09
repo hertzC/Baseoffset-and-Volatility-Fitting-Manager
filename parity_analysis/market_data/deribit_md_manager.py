@@ -83,9 +83,9 @@ class DeribitMDManager:
         return sorted_expiries
 
     def with_parsed_timestamps(self, lazy_df: pl.LazyFrame) -> pl.LazyFrame:
-        """Return DataFrame with timestamps parsed as datetime objects."""
+        """Return DataFrame with timestamps parsed as datetime objects.  (Use exchange timestamp instead of local timestamp)"""
         return lazy_df.with_columns(
-            timestamp=(pl.lit(self.date_str) + " " + pl.col("timestamp")).str.strptime(pl.Datetime, "%Y%m%d %H:%M:%S%.f"),
+            timestamp=(pl.lit(self.date_str) + " " + pl.col("exchange_timestamp")).str.strptime(pl.Datetime, "%Y%m%d %H:%M:%S%.f"),
         )
 
     def get_conflation_columns(self) -> list[str]:

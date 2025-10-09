@@ -32,7 +32,7 @@ analysis:
   # Single point analysis settings
   single_analysis:
     # Example expiry to analyze (DDMMMYY format)
-    expiry: "27DEC24"
+    expiry: "1MAR24"
     
     # Analysis timestamp (YYYY, M, D, H, M, S)
     timestamp:
