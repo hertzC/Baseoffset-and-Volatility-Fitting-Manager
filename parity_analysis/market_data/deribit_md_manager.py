@@ -181,7 +181,8 @@ class DeribitMDManager:
         """Check if expiry corresponds to a futures contract."""
         return expiry in self.fut_expiries
 
-    def get_option_chain(self, df: pl.DataFrame, expiry: str, timestamp: datetime) -> pl.DataFrame:
+    @staticmethod
+    def get_option_chain(df: pl.DataFrame, expiry: str, timestamp: datetime) -> pl.DataFrame:
         """
         Construct option chain by joining calls and puts on strike.
         

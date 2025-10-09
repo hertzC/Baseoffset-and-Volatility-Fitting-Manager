@@ -26,7 +26,7 @@ Date: October 2025
 
 import numpy as np
 import polars as pl
-from typing import Tuple, Optional
+from typing import Tuple
 
 
 def apply_option_constraints(
@@ -301,78 +301,6 @@ def tighten_option_spreads_separate_columns(
     return result
 
 
-def analyze_constraint_impact(
-    original_bid_call: np.ndarray,
-    original_ask_call: np.ndarray,
-    original_bid_put: np.ndarray,
-    original_ask_put: np.ndarray,
-    tightened_bid_call: np.ndarray,
-    tightened_ask_call: np.ndarray,
-    tightened_bid_put: np.ndarray,
-    tightened_ask_put: np.ndarray,
-    strikes: np.ndarray
-) -> dict:
-    """
-    Analyze the impact of constraint application on option prices.
-    
-    Args:
-        original_*: Original price arrays
-        tightened_*: Constrained price arrays
-        strikes: Strike price array
-        
-    Returns:
-        Dictionary with impact statistics
-    """
-    def safe_divide(a, b):
-        """Safe division avoiding division by zero."""
-        return np.divide(a, b, out=np.zeros_like(a), where=(b != 0))
-    
-    # Calculate changes
-    call_bid_changes = tightened_bid_call - original_bid_call
-    call_ask_changes = tightened_ask_call - original_ask_call
-    put_bid_changes = tightened_bid_put - original_bid_put
-    put_ask_changes = tightened_ask_put - original_ask_put
-    
-    # Calculate relative changes (as percentages)
-    call_bid_pct_changes = safe_divide(call_bid_changes, original_bid_call) * 100
-    call_ask_pct_changes = safe_divide(call_ask_changes, original_ask_call) * 100
-    put_bid_pct_changes = safe_divide(put_bid_changes, original_bid_put) * 100
-    put_ask_pct_changes = safe_divide(put_ask_changes, original_ask_put) * 100
-    
-    return {
-        'total_prices_modified': np.sum([
-            np.sum(call_bid_changes != 0),
-            np.sum(call_ask_changes != 0),
-            np.sum(put_bid_changes != 0),
-            np.sum(put_ask_changes != 0)
-        ]),
-        'call_bid_changes': {
-            'count_modified': np.sum(call_bid_changes != 0),
-            'max_absolute_change': np.max(np.abs(call_bid_changes)),
-            'max_percentage_change': np.max(np.abs(call_bid_pct_changes)),
-            'mean_change': np.mean(call_bid_changes[call_bid_changes != 0]) if np.any(call_bid_changes != 0) else 0
-        },
-        'call_ask_changes': {
-            'count_modified': np.sum(call_ask_changes != 0),
-            'max_absolute_change': np.max(np.abs(call_ask_changes)),
-            'max_percentage_change': np.max(np.abs(call_ask_pct_changes)),
-            'mean_change': np.mean(call_ask_changes[call_ask_changes != 0]) if np.any(call_ask_changes != 0) else 0
-        },
-        'put_bid_changes': {
-            'count_modified': np.sum(put_bid_changes != 0),
-            'max_absolute_change': np.max(np.abs(put_bid_changes)),
-            'max_percentage_change': np.max(np.abs(put_bid_pct_changes)),
-            'mean_change': np.mean(put_bid_changes[put_bid_changes != 0]) if np.any(put_bid_changes != 0) else 0
-        },
-        'put_ask_changes': {
-            'count_modified': np.sum(put_ask_changes != 0),
-            'max_absolute_change': np.max(np.abs(put_ask_changes)),
-            'max_percentage_change': np.max(np.abs(put_ask_pct_changes)),
-            'mean_change': np.mean(put_ask_changes[put_ask_changes != 0]) if np.any(put_ask_changes != 0) else 0
-        }
-    }
-
-
 # Backward compatibility aliases
 def tighten_option_spread(option_df: pl.DataFrame) -> pl.DataFrame:
     """
@@ -393,5 +321,4 @@ __all__ = [
     'tighten_option_spreads_mixed_format',
     'tighten_option_spreads_separate_columns',
     'tighten_option_spread',  # backward compatibility
-    'analyze_constraint_impact'
 ]
