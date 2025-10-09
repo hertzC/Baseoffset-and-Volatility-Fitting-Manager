@@ -7,11 +7,11 @@ from datetime import datetime, time
 from typing import Any, Union
 import numpy as np
 import polars as pl
-from btc_options.analytics import Result
-from btc_options.analytics.fitter import Fitter
-from btc_options.data_managers.deribit_md_manager import DeribitMDManager
-from btc_options.data_managers.orderbook_deribit_md_manager import OrderbookDeribitMDManager
-from btc_options.analytics.maths import convert_paramter_into_rate
+from parity_analysis.fitting import Result
+from parity_analysis.fitting.fitter import Fitter
+from parity_analysis.market_data.deribit_md_manager import DeribitMDManager
+from parity_analysis.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
+from parity_analysis.fitting.maths import convert_paramter_into_rate
 from config_loader import Config
 from scipy.optimize import minimize
 

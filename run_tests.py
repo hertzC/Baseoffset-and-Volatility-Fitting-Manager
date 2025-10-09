@@ -33,7 +33,7 @@ def run_tests():
     try:
         import pytest_cov
         cmd.extend([
-            "--cov=btc_options",
+            "--cov=parity_analysis",
             "--cov-report=term-missing",
             "--cov-report=html:htmlcov"
         ])

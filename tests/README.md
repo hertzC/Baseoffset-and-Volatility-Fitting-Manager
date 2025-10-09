@@ -77,7 +77,7 @@ python -m pytest tests/test_bitcoin_options_analysis.py::TestWLSRegression::test
 
 ### Option 3: With Coverage (requires pytest-cov)
 ```bash
-python -m pytest tests/test_bitcoin_options_analysis.py --cov=btc_options --cov-report=html
+python -m pytest tests/test_bitcoin_options_analysis.py --cov=parity_analysis --cov-report=html
 ```
 
 ## ✅ Expected Results

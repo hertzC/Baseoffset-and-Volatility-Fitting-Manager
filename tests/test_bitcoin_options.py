@@ -15,37 +15,37 @@ import polars as pl
 import numpy as np
 from datetime import datetime, timedelta
 
-# Add the project root to Python path for btc_options module
+# Add the project root to Python path for parity_analysis module
 project_root = Path(__file__).parent.parent  # Go up one level from tests/ to project root
 sys.path.insert(0, str(project_root))
 
-# Import project modules from new btc_options structure
+# Import project modules from new parity_analysis structure
 try:
-    from btc_options.data_managers.deribit_md_manager import DeribitMDManager
+    from parity_analysis.market_data.deribit_md_manager import DeribitMDManager
 except ImportError:
     print("Warning: Could not import DeribitMDManager")
     DeribitMDManager = None
 
 try:
-    from btc_options.data_managers.orderbook_deribit_md_manager import OrderbookDeribitMDManager
+    from parity_analysis.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
 except ImportError:
     print("Warning: Could not import OrderbookDeribitMDManager")
     OrderbookDeribitMDManager = None
 
 try:
-    from btc_options.analytics.weight_least_square_regressor import WLSRegressor
+    from parity_analysis.fitting.weight_least_square_regressor import WLSRegressor
 except ImportError:
     print("Warning: Could not import WLSRegressor")
     WLSRegressor = None
 
 try:
-    from btc_options.analytics.nonlinear_minimization import NonlinearMinimization
+    from parity_analysis.fitting.nonlinear_minimization import NonlinearMinimization
 except ImportError:
     print("Warning: Could not import NonlinearMinimization")
     NonlinearMinimization = None
 
 try:
-    from btc_options.visualization.plotly_manager import PlotlyManager
+    from parity_analysis.reporting.plotly_manager import PlotlyManager
 except ImportError:
     print("Warning: Could not import PlotlyManager")
     PlotlyManager = None

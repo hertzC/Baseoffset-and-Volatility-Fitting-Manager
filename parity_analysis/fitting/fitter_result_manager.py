@@ -1,7 +1,7 @@
 import numpy as np
 import polars as pl
 
-from btc_options.analytics import Result
+from parity_analysis.fitting import Result
 
 
 class FitterResultManager:

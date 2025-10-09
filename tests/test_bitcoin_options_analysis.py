@@ -16,10 +16,10 @@ import sys
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from btc_options.data_managers.deribit_md_manager import DeribitMDManager
-from btc_options.data_managers.orderbook_deribit_md_manager import OrderbookDeribitMDManager
-from btc_options.analytics.weight_least_square_regressor import WLSRegressor
-from btc_options.analytics.nonlinear_minimization import NonlinearMinimization
+from parity_analysis.market_data.deribit_md_manager import DeribitMDManager
+from parity_analysis.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
+from parity_analysis.fitting.weight_least_square_regressor import WLSRegressor
+from parity_analysis.fitting.nonlinear_minimization import NonlinearMinimization
 from config_loader import Config, load_config
 
 

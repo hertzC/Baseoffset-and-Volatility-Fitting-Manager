@@ -48,13 +48,13 @@ import warnings
 # Import configuration loader
 from config_loader import load_config, ConfigurationError
 
-# Import project modules from btc_options
-from btc_options.data_managers.deribit_md_manager import DeribitMDManager
-from btc_options.data_managers.orderbook_deribit_md_manager import OrderbookDeribitMDManager
-from btc_options.analytics.weight_least_square_regressor import WLSRegressor
-from btc_options.analytics.nonlinear_minimization import NonlinearMinimization
-from btc_options.analytics.fitter_result_manager import FitterResultManager
-from btc_options.analytics.maths import convert_rate_into_parameter
+# Import project modules from parity_analysis
+from parity_analysis.market_data.deribit_md_manager import DeribitMDManager
+from parity_analysis.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
+from parity_analysis.fitting.weight_least_square_regressor import WLSRegressor
+from parity_analysis.fitting.nonlinear_minimization import NonlinearMinimization
+from parity_analysis.fitting.fitter_result_manager import FitterResultManager
+from parity_analysis.fitting.maths import convert_rate_into_parameter
 
 
 def load_market_data(config, data_file: str) -> pl.LazyFrame:

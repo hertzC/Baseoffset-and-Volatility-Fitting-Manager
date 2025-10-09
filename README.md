@@ -19,7 +19,7 @@ baseoffset-fitting-manager/
 ├── main.py                    # Main entry point
 ├── requirements.txt           # Python dependencies
 ├── automated_test_runner.py   # Automated test execution and reporting
-├── btc_options/              # Bitcoin Options Analysis Library
+├── parity_analysis/          # Bitcoin Options Parity Analysis Library
 │   ├── __init__.py
 │   ├── data_managers/        # Market data processing
 │   │   ├── __init__.py
