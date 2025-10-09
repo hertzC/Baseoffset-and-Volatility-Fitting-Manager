@@ -27,6 +27,12 @@ from datetime import datetime
 import numpy as np
 import polars as pl
 
+# Import shared option constraints module
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
+from pricer.option_constraints import apply_option_constraints, tighten_option_spreads_separate_columns
+
 
 class DeribitMDManager:
     """Manager for processing Deribit market data and constructing option chains."""
@@ -259,53 +265,6 @@ class DeribitMDManager:
             
         return result.select(base_columns).sort('strike')
 
-    def _apply_option_constraints(self, 
-                                 bid_price_call: np.ndarray, 
-                                 ask_price_call: np.ndarray, 
-                                 bid_price_put: np.ndarray, 
-                                 ask_price_put: np.ndarray,
-                                 strike: np.ndarray,
-                                 spot: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Apply monotonicity and no-arbitrage constraints to option prices.
-        
-        Args:
-            bid_price_call, ask_price_call: Call bid/ask prices
-            bid_price_put, ask_price_put: Put bid/ask prices
-            strike: Strike prices array
-            spot: Spot price
-            
-        Returns:
-            Tuple of adjusted prices with constraints applied
-        """
-        # Step 1: Apply monotonicity constraints
-        # Call prices: bids decrease, asks increase with strike
-        bid_price_call = np.maximum.accumulate(bid_price_call[::-1], axis=0)[::-1]
-        
-        ask_price_call[ask_price_call == 0] = np.inf
-        ask_price_call = np.minimum.accumulate(ask_price_call, axis=0)
-        ask_price_call[ask_price_call == np.inf] = 0
-        
-        # Put prices: bids increase, asks decrease with strike  
-        bid_price_put = np.maximum.accumulate(bid_price_put, axis=0)
-        
-        ask_price_put[ask_price_put == 0] = np.inf
-        ask_price_put = np.minimum.accumulate(ask_price_put[::-1], axis=0)[::-1]
-        ask_price_put[ask_price_put == np.inf] = 0
-        
-        # Step 2: Apply no-arbitrage spread constraints
-        # Forward pass (increasing strike)
-        for i in range(1, len(strike)):
-            bid_price_call[i] = max(bid_price_call[i], bid_price_call[i-1] - (strike[i] - strike[i-1]) / spot)
-            ask_price_put[i] = min(ask_price_put[i], ask_price_put[i-1] + (strike[i] - strike[i-1]) / spot)
-            
-        # Backward pass (decreasing strike)  
-        for i in range(len(strike)-2, -1, -1):
-            ask_price_call[i] = min(ask_price_call[i], ask_price_call[i+1] + (strike[i+1] - strike[i]) / spot)
-            bid_price_put[i] = max(bid_price_put[i], bid_price_put[i+1] - (strike[i+1] - strike[i]) / spot)
-            
-        return bid_price_call, ask_price_call, bid_price_put, ask_price_put
-
     def tighten_option_spread(self, df: pl.DataFrame) -> pl.DataFrame:
         """
         Apply monotonicity constraints and no-arbitrage bounds to option spreads.
@@ -316,30 +275,15 @@ class DeribitMDManager:
         Returns:
             DataFrame with tightened spreads and original values preserved
         """
-        df = df.drop_nulls(['bid_price', 'ask_price', 'bid_price_P', 'ask_price_P', 'S'])
-        
-        if df.is_empty():
-            return df
-            
-        # Apply both monotonicity and no-arbitrage constraints
-        final_bid_call, final_ask_call, final_bid_put, final_ask_put = self._apply_option_constraints(
-            df['bid_price'].to_numpy().copy(),
-            df['ask_price'].to_numpy().copy(),
-            df['bid_price_P'].to_numpy().copy(),
-            df['ask_price_P'].to_numpy().copy(),
-            strike=df['strike'].to_numpy().copy(), 
-            spot=df['S'].drop_nulls()[0]
-        )
-
-        return df.with_columns(
-            old_bid_price=pl.col('bid_price'),
-            old_ask_price=pl.col('ask_price'),
-            old_bid_price_P=pl.col('bid_price_P'),
-            old_ask_price_P=pl.col('ask_price_P'),
-            bid_price=final_bid_call,  
-            ask_price=final_ask_call, 
-            bid_price_P=final_bid_put, 
-            ask_price_P=final_ask_put,  
+        # Use the shared function for separate columns format
+        return tighten_option_spreads_separate_columns(
+            df,
+            spot_col='S',
+            strike_col='strike',
+            call_bid_col='bid_price',
+            call_ask_col='ask_price',
+            put_bid_col='bid_price_P',
+            put_ask_col='ask_price_P'
         )
 
     def create_option_synthetic(self, df: pl.DataFrame, expiry: str, timestamp: datetime) -> tuple[pl.DataFrame, pl.DataFrame]:
