@@ -225,7 +225,8 @@ class DeribitMDManager:
             future_basis = (pl.col('bid_price_fut') + pl.col('ask_price_fut'))/2 - pl.col('S'),
         ).sort('strike')
 
-    def get_option_synthetic(self, df: pl.DataFrame) -> pl.DataFrame:
+    @staticmethod
+    def get_option_synthetic(df: pl.DataFrame) -> pl.DataFrame:
         """
         Create synthetic put-call difference data for regression.
         

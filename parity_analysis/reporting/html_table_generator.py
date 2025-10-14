@@ -5,6 +5,9 @@ This module provides functionality to generate styled HTML tables for
 displaying Bitcoin options price comparisons with highlighting for changes.
 """
 
+import polars as pl
+
+
 def format_price_change(old_val, new_val, precision=4):
     """
     Format price with red highlighting if changed
@@ -23,6 +26,27 @@ def format_price_change(old_val, new_val, precision=4):
         return f'{new_val:.{precision}f}'
 
 
+def enrich_comparison_df(comparison_df):
+    """
+    Enrich comparison DataFrame with spread calculations
+    
+    Args:
+        comparison_df: Polars DataFrame with price comparison data
+        
+    Returns:
+        pl.DataFrame: Enriched DataFrame with spread columns
+    """
+    return comparison_df.rename(
+        {'original_bid_price': 'old_bid_price', 'original_ask_price': 'old_ask_price', 
+         'original_bid_price_P': 'old_bid_price_P', 'original_ask_price_P': 'old_ask_price_P'}
+    ).with_columns([
+        (pl.col('ask_price') - pl.col('bid_price')).alias('final_call_spread'),
+        (pl.col('old_ask_price') - pl.col('old_bid_price')).alias('orig_call_spread'),
+        (pl.col('ask_price_P') - pl.col('bid_price_P')).alias('final_put_spread'),
+        (pl.col('old_ask_price_P') - pl.col('old_bid_price_P')).alias('orig_put_spread'),
+    ]).sort('strike')
+
+
 def generate_price_comparison_table(comparison_df, table_width="70%", font_size="10px"):
     """
     Generate HTML table for price comparison with styling
@@ -36,6 +60,7 @@ def generate_price_comparison_table(comparison_df, table_width="70%", font_size=
         str: Complete HTML content with CSS styling and table
     """
     # Get spot price for display
+    comparison_df = enrich_comparison_df(comparison_df)
     spot_price = comparison_df['S'][0]
     
     # CSS styling for the table
@@ -132,7 +157,7 @@ def calculate_tightening_stats(comparison_df):
     Returns:
         dict: Dictionary containing various statistics about price changes
     """
-    import polars as pl
+    comparison_df = enrich_comparison_df(comparison_df)
     
     stats = {
         'call_bid_changes': len(comparison_df.filter(pl.col('old_bid_price') != pl.col('bid_price'))),

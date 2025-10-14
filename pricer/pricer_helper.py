@@ -167,6 +167,7 @@ def find_implied_volatility(target_value, F, K, T, r, option_type='C', **kwargs)
     INITIAL_VOLA = kwargs.get('initial_vola', 0.5)
     MIN_TIME_HOURS = kwargs.get('min_time_hours', 2.0)
     VOL_BOUNDS = kwargs.get('vol_bounds', (0.01, 5.0))
+    MIN_VEGA = kwargs.get('min_vega', 1e-4)  # floor to avoid division by 0 vega
     
     # Damping parameters
     BASE_DAMPING = kwargs.get('base_damping', 0.7)
@@ -267,7 +268,7 @@ def find_implied_volatility(target_value, F, K, T, r, option_type='C', **kwargs)
         update_mask = ~done & (vegas != 0) & np.isfinite(vegas) & np.isfinite(diff) & ~is_invalid
         
         # Newton-Raphson update - use np.where for safe assignment
-        delta_sigma = diff / vegas
+        delta_sigma = diff / np.maximum(vegas, MIN_VEGA)
         
         # Enhanced adaptive damping logic
         # Calculate moneyness for adaptive damping

@@ -297,8 +297,17 @@ def tighten_option_spreads_separate_columns(
         pl.Series(put_bid_col, tightened_bid_put),
         pl.Series(put_ask_col, tightened_ask_put)
     ])
-    
-    return result
+    # assert (result[call_ask_col] > result[call_bid_col]).all(), f"Call ask prices are not greater than bid prices, {result.filter(pl.col(call_ask_col) <= pl.col(call_bid_col))}"
+    # assert (result[put_ask_col] > result[put_bid_col]).all(), f"Put ask prices are not greater than bid prices, {result.filter(pl.col(put_ask_col) <= pl.col(put_bid_col))}"
+
+    call_breach = result[call_ask_col] <= result[call_bid_col]
+    put_breach = result[put_ask_col] <= result[put_bid_col]
+
+    if call_breach.any():
+        print(f"❌ {df['timestamp'][0]}: Call prices violate bid < ask constraints, S: {df[spot_col][0]}, expiry: {df['expiry'][0]} strikes: {result.filter(call_breach)['strike'].to_list()}")
+    if put_breach.any():
+        print(f"❌ {df['timestamp'][0]}: Put prices violate bid < ask constraints, S: {df[spot_col][0]}, expiry: {df['expiry'][0]} strikes: {result.filter(put_breach)['strike'].to_list()}")
+    return result.filter(~call_breach & ~put_breach)
 
 
 # Backward compatibility aliases
