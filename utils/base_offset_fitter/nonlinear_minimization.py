@@ -7,11 +7,11 @@ from datetime import datetime, time
 from typing import Any, Union
 import numpy as np
 import polars as pl
-from parity_analysis.fitting import Result
-from parity_analysis.fitting.fitter import Fitter
-from parity_analysis.market_data.deribit_md_manager import DeribitMDManager
-from parity_analysis.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
-from parity_analysis.fitting.maths import convert_paramter_into_rate
+from utils.base_offset_fitter import Result
+from utils.base_offset_fitter.fitter import Fitter
+from utils.market_data.deribit_md_manager import DeribitMDManager
+from utils.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
+from utils.base_offset_fitter.maths import convert_paramter_into_rate
 from config_loader import Config
 from scipy.optimize import minimize
 

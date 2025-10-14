@@ -19,33 +19,33 @@ from datetime import datetime, timedelta
 project_root = Path(__file__).parent.parent  # Go up one level from tests/ to project root
 sys.path.insert(0, str(project_root))
 
-# Import project modules from new parity_analysis structure
+# Import project modules from new utils structure
 try:
-    from parity_analysis.market_data.deribit_md_manager import DeribitMDManager
+    from utils.market_data.deribit_md_manager import DeribitMDManager
 except ImportError:
     print("Warning: Could not import DeribitMDManager")
     DeribitMDManager = None
 
 try:
-    from parity_analysis.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
+    from utils.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
 except ImportError:
     print("Warning: Could not import OrderbookDeribitMDManager")
     OrderbookDeribitMDManager = None
 
 try:
-    from parity_analysis.fitting.weight_least_square_regressor import WLSRegressor
+    from utils.base_offset_fitter.weight_least_square_regressor import WLSRegressor
 except ImportError:
     print("Warning: Could not import WLSRegressor")
     WLSRegressor = None
 
 try:
-    from parity_analysis.fitting.nonlinear_minimization import NonlinearMinimization
+    from utils.base_offset_fitter.nonlinear_minimization import NonlinearMinimization
 except ImportError:
     print("Warning: Could not import NonlinearMinimization")
     NonlinearMinimization = None
 
 try:
-    from parity_analysis.reporting.plotly_manager import PlotlyManager
+    from utils.reporting.plotly_manager import PlotlyManager
 except ImportError:
     print("Warning: Could not import PlotlyManager")
     PlotlyManager = None

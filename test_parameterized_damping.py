@@ -7,7 +7,7 @@ import sys
 import os
 sys.path.append('/home/user/Python/Baseoffset-Fitting-Manager')
 
-from pricer.pricer_helper import find_vol
+from utils.pricer.pricer_helper import find_vol
 import numpy as np
 
 def test_parameterized_damping():

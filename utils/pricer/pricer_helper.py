@@ -1,7 +1,7 @@
 # Convenience functions for backward compatibility and simple calculations
 import numpy as np
 
-from pricer.black76_option_pricer import Black76OptionPricer
+from utils.pricer.black76_option_pricer import Black76OptionPricer
 
 
 def black76_call(F, K, T, r, vol):

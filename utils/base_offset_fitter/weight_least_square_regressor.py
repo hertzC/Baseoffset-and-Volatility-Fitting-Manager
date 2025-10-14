@@ -5,10 +5,10 @@ Extracts USD and BTC interest rates from options pricing data.
 
 from typing import Union
 import polars as pl
-from parity_analysis.fitting import Result
-from parity_analysis.fitting.fitter import Fitter
-from parity_analysis.market_data.deribit_md_manager import DeribitMDManager
-from parity_analysis.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
+from utils.base_offset_fitter import Result
+from utils.base_offset_fitter.fitter import Fitter
+from utils.market_data.deribit_md_manager import DeribitMDManager
+from utils.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
 from config_loader import Config
 import statsmodels.api as sm
 

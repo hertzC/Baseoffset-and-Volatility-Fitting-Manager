@@ -1,12 +1,12 @@
 from datetime import datetime
 from typing import Union
 import numpy as np
-from parity_analysis.fitting import Result
+from utils.base_offset_fitter import Result
 from abc import ABC, abstractmethod
 
-from parity_analysis.fitting.maths import convert_paramter_into_rate
-from parity_analysis.market_data.deribit_md_manager import DeribitMDManager
-from parity_analysis.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
+from utils.base_offset_fitter.maths import convert_paramter_into_rate
+from utils.market_data.deribit_md_manager import DeribitMDManager
+from utils.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
 from config_loader import Config
 
 

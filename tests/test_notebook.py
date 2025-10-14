@@ -21,12 +21,12 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-# Import project modules from parity_analysis
-from parity_analysis.market_data.deribit_md_manager import DeribitMDManager
-from parity_analysis.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
-from parity_analysis.fitting.weight_least_square_regressor import WLSRegressor
-from parity_analysis.fitting.nonlinear_minimization import NonlinearMinimization
-from parity_analysis.reporting.plotly_manager import PlotlyManager
+# Import project modules from utils
+from utils.market_data.deribit_md_manager import DeribitMDManager
+from utils.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
+from utils.base_offset_fitter.weight_least_square_regressor import WLSRegressor
+from utils.base_offset_fitter.nonlinear_minimization import NonlinearMinimization
+from utils.reporting.plotly_manager import PlotlyManager
 
 
 class TestSampleDataGeneration:

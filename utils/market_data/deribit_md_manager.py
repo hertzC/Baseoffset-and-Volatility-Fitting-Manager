@@ -31,7 +31,7 @@ import polars as pl
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
-from pricer.option_constraints import apply_option_constraints, tighten_option_spreads_separate_columns
+from utils.pricer.option_constraints import apply_option_constraints, tighten_option_spreads_separate_columns
 
 
 class DeribitMDManager:

@@ -1,7 +1,7 @@
 import numpy as np
 import polars as pl
 
-from parity_analysis.fitting import Result
+from utils.base_offset_fitter import Result
 
 
 class FitterResultManager:
