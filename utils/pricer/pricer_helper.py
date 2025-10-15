@@ -305,7 +305,7 @@ def find_implied_volatility(target_value, F, K, T, r, option_type='C', **kwargs)
         # Mark converged elements as done
         done = done | converged
         
-        # Early exit if all converged
+        # Early exit if all convergefind_implied_volatilityd
         if np.all(done):
             break
     
