@@ -16,11 +16,10 @@ from utils.volatility_fitter.time_adjusted_wing_model.time_adjusted_wing_model i
     TimeAdjustedWingModel, 
     TimeAdjustedWingModelParameters
 )
-from utils.volatility_fitter.time_adjusted_wing_model.time_adjusted_wing_model_calibrator import (
-    TimeAdjustedWingModelCalibrator,
-    TimeAdjustedCalibrationResult,
+from utils.volatility_fitter.time_adjusted_wing_model.time_adjusted_wing_model_parameters import (
     create_time_adjusted_wing_model_from_result
 )
+from utils.volatility_fitter.base_volatility_model import CalibrationResult, UnifiedVolatilityCalibrator
 
 
 class TestTimeAdjustedWingModelParameters:
@@ -211,8 +210,8 @@ class TestTimeAdjustedWingModel:
             pytest.skip("get_moneyness_ranges method not available")
 
 
-class TestTimeAdjustedWingModelCalibrator:
-    """Test cases for TimeAdjustedWingModelCalibrator"""
+class TestUnifiedVolatilityCalibrator:
+    """Test cases for UnifiedVolatilityCalibrator"""
     
     @pytest.fixture
     def sample_market_data(self):
@@ -229,18 +228,18 @@ class TestTimeAdjustedWingModelCalibrator:
     @pytest.fixture
     def calibrator(self):
         """Fixture providing a calibrator instance"""
-        return TimeAdjustedWingModelCalibrator(use_norm_term=True)
+        return UnifiedVolatilityCalibrator(use_norm_term=True)
     
     def test_calibrator_initialization(self):
         """Test calibrator initialization"""
-        calibrator = TimeAdjustedWingModelCalibrator()
+        calibrator = UnifiedVolatilityCalibrator()
         assert calibrator.enable_bounds == True
         assert calibrator.tolerance == 1e-16
         assert calibrator.method == "SLSQP"
         assert calibrator.use_norm_term == True
         
         # Test custom initialization
-        custom_calibrator = TimeAdjustedWingModelCalibrator(
+        custom_calibrator = UnifiedVolatilityCalibrator(
             enable_bounds=False,
             tolerance=1e-8,
             method="L-BFGS-B",
@@ -289,7 +288,7 @@ class TestTimeAdjustedWingModelCalibrator:
             time_to_expiry=time_to_expiry
         )
         
-        assert isinstance(result, TimeAdjustedCalibrationResult)
+        assert isinstance(result, CalibrationResult)
         assert isinstance(result.success, bool)
         assert isinstance(result.error, float)
         assert result.error >= 0
@@ -328,7 +327,7 @@ class TestIntegrationScenarios:
         forward_price = 62000.0
         time_to_expiry = 0.0411  # ~15 days
         
-        calibrator = TimeAdjustedWingModelCalibrator(use_norm_term=True)
+        calibrator = UnifiedVolatilityCalibrator(use_norm_term=True)
         
         result = calibrator.calibrate(
             strike_list=strikes,
@@ -340,7 +339,7 @@ class TestIntegrationScenarios:
         )
         
         # Basic validation
-        assert isinstance(result, TimeAdjustedCalibrationResult)
+        assert isinstance(result, CalibrationResult)
         
         if result.success:
             # Create model and test fitted volatilities
@@ -363,7 +362,7 @@ class TestIntegrationScenarios:
         forward_price = 60000.0
         time_to_expiry = 0.25
         
-        calibrator = TimeAdjustedWingModelCalibrator()
+        calibrator = UnifiedVolatilityCalibrator()
         
         result = calibrator.calibrate(
             strike_list=strikes,
@@ -375,7 +374,7 @@ class TestIntegrationScenarios:
         )
         
         # Should handle extreme values gracefully
-        assert isinstance(result, TimeAdjustedCalibrationResult)
+        assert isinstance(result, CalibrationResult)
         
         if result.success:
             model = TimeAdjustedWingModel(result.parameters)
@@ -393,7 +392,7 @@ class TestIntegrationScenarios:
         forward_price = 60000.0
         time_to_expiry = 0.0027  # ~1 day
         
-        calibrator = TimeAdjustedWingModelCalibrator()
+        calibrator = UnifiedVolatilityCalibrator()
         
         result = calibrator.calibrate(
             strike_list=strikes,
@@ -405,7 +404,7 @@ class TestIntegrationScenarios:
         )
         
         # Should handle short expiry gracefully
-        assert isinstance(result, TimeAdjustedCalibrationResult)
+        assert isinstance(result, CalibrationResult)
 
 
 class TestRegressionScenarios:
@@ -424,7 +423,7 @@ class TestRegressionScenarios:
         # Fixed parameters that should give a specific loss
         fixed_params = [0.6, 0.08, 5.0, 5.0, 0.5, -0.95, 5.0, 5.0]
         
-        calibrator = TimeAdjustedWingModelCalibrator()
+        calibrator = UnifiedVolatilityCalibrator()
         args = (strikes, market_vols, vegas, weights, forward_price, time_to_expiry, True)
         
         loss = calibrator._loss_function(fixed_params, *args)
@@ -501,7 +500,7 @@ class TestPerformanceBenchmarks:
         forward_price = 60000.0
         time_to_expiry = 0.25
         
-        calibrator = TimeAdjustedWingModelCalibrator()
+        calibrator = UnifiedVolatilityCalibrator()
         calibrator.tolerance = 1e-6  # Relaxed tolerance for speed
         
         start_time = time.time()
@@ -519,7 +518,7 @@ class TestPerformanceBenchmarks:
         
         # Should complete within 30 seconds
         assert calibration_time < 30.0
-        assert isinstance(result, TimeAdjustedCalibrationResult)
+        assert isinstance(result, CalibrationResult)
 
 
 if __name__ == "__main__":

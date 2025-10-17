@@ -9,14 +9,15 @@
 from typing import Tuple
 import numpy as np
 from .wing_model_parameters import WingModelParameters
+from ..base_volatility_model_abstract import BaseVolatilityModel
 
 
-class WingModel:
+class WingModel(BaseVolatilityModel):
     """Wing Model implementation for volatility surface modeling"""
     
     def __init__(self, parameters: WingModelParameters):
         """Initialize wing model with parameters"""
-        self.parameters = parameters
+        super().__init__(parameters)
     
     def calculate_volatility_from_strike(self, strike: float) -> float:
         """
@@ -29,7 +30,19 @@ class WingModel:
             wing model volatility
         """
         # Convert strike to log forward moneyness
-        k = np.log(strike / self.parameters.atm)
+        k = np.log(strike / self.parameters.forward_price)
+        return self.calculate_volatility_from_moneyness(k)
+    
+    def calculate_volatility_from_moneyness(self, k: float) -> float:
+        """
+        Calculate wing model volatility for given log forward moneyness
+        
+        Args:
+            k: log forward moneyness
+            
+        Returns:
+            wing model volatility
+        """
         return self.calculate_volatility(k)
     
     def get_moneyness_ranges(self) -> dict:
@@ -59,7 +72,7 @@ class WingModel:
             dict: Dictionary containing strike boundaries for each region
         """
         moneyness_ranges = self.get_moneyness_ranges()
-        atm = self.parameters.atm
+        atm = self.parameters.forward_price
         
         strike_ranges = {}
         for region, bounds in moneyness_ranges.items():
@@ -93,8 +106,8 @@ class WingModel:
         params = self.parameters
         
         # Calculate adjusted parameters
-        vc = params.vr - params.vcr * params.ssr * ((params.atm - params.ref) / params.ref)
-        sc = params.sr - params.scr * params.ssr * ((params.atm - params.ref) / params.ref)
+        vc = params.vr - params.vcr * params.ssr * ((params.forward_price - params.ref_price) / params.ref_price)
+        sc = params.sr - params.scr * params.ssr * ((params.forward_price - params.ref_price) / params.ref_price)
         
         # Different regions of the wing model
         if k < params.dc * (1 + params.dsm):
@@ -142,7 +155,7 @@ class WingModel:
                (1 + 1 / params.usm) * (2 * params.cc * params.uc + sc) * k - 
                (params.cc / params.usm + sc / (2 * params.uc * params.usm)) * k ** 2)
     
-    def calculate_durrleman_condition(self, num_points: int = 50) -> Tuple[np.ndarray, np.ndarray]:
+    def calculate_durrleman_condition(self, num_points: int = 501) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculate Durrleman condition for butterfly arbitrage checking
         
@@ -156,8 +169,8 @@ class WingModel:
         moneyness_list = np.linspace(params.dc, params.uc, num_points)
         
         # Calculate adjusted parameters
-        vc = params.vr - params.vcr * params.ssr * ((params.atm - params.ref) / params.ref)
-        sc = params.sr - params.scr * params.ssr * ((params.atm - params.ref) / params.ref)
+        vc = params.vr - params.vcr * params.ssr * ((params.forward_price - params.ref_price) / params.ref_price)
+        sc = params.sr - params.scr * params.ssr * ((params.forward_price - params.ref_price) / params.ref_price)
         
         g_list = []
         

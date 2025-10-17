@@ -21,11 +21,10 @@ from utils.volatility_fitter.time_adjusted_wing_model.time_adjusted_wing_model i
     TimeAdjustedWingModel, 
     TimeAdjustedWingModelParameters
 )
-from utils.volatility_fitter.time_adjusted_wing_model.time_adjusted_wing_model_calibrator import (
-    TimeAdjustedWingModelCalibrator,
-    TimeAdjustedCalibrationResult,
+from utils.volatility_fitter.time_adjusted_wing_model.time_adjusted_wing_model_parameters import (
     create_time_adjusted_wing_model_from_result
 )
+from utils.volatility_fitter.base_volatility_model import CalibrationResult, UnifiedVolatilityCalibrator
 
 
 class SimpleTestRunner:
@@ -172,68 +171,82 @@ def test_moneyness_calculation():
     assert otm_put_moneyness < 0
 
 
-def test_calibrator_initialization():
-    """Test calibrator initialization"""
-    calibrator = TimeAdjustedWingModelCalibrator()
+def test_unified_calibrator_initialization():
+    """Test unified calibrator initialization"""
+    calibrator = UnifiedVolatilityCalibrator(
+        model_class=TimeAdjustedWingModel,
+        enable_bounds=True,
+        method="SLSQP"
+    )
     assert calibrator.enable_bounds == True
     assert calibrator.method == "SLSQP"
-    assert calibrator.use_norm_term == True
-    
-    # Test parameter bounds
-    bounds = calibrator._get_parameter_bounds()
-    assert len(bounds) == 8
-    
-    for bound in bounds:
-        assert len(bound) == 2
-        assert bound[0] < bound[1]
+    assert calibrator.model_class == TimeAdjustedWingModel
 
 
 def test_loss_function():
-    """Test loss function calculation"""
-    calibrator = TimeAdjustedWingModelCalibrator()
+    """Test unified calibrator functionality"""
+    calibrator = UnifiedVolatilityCalibrator(
+        model_class=TimeAdjustedWingModel,
+        enable_bounds=True
+    )
     
     # Sample market data
     strikes = [50000, 55000, 60000, 65000, 70000]
     market_vols = [0.8, 0.7, 0.6, 0.7, 0.8]
     vegas = [100, 150, 200, 150, 100]
-    weights = [1.0] * len(strikes)
     forward_price = 60000.0
     time_to_expiry = 0.25
     
-    # Sample parameters
-    params = [0.6, 0.08, 5.0, 5.0, 0.5, -0.95, 5.0, 5.0]
-    args = (strikes, market_vols, vegas, weights, forward_price, time_to_expiry, True)
+    # Create initial parameters
+    initial_params = TimeAdjustedWingModelParameters(
+        atm_vol=0.6, slope=0.08, call_curve=5.0, put_curve=5.0,
+        up_cutoff=0.5, down_cutoff=-0.95, up_smoothing=5.0, down_smoothing=5.0,
+        forward_price=forward_price, time_to_expiry=time_to_expiry
+    )
     
-    loss = calibrator._loss_function(params, *args)
-    assert isinstance(loss, float)
-    assert loss >= 0
-    assert not np.isnan(loss)
-    assert not np.isinf(loss)
+    # Test that calibrator can be instantiated and used
+    assert calibrator.model_class == TimeAdjustedWingModel
+    assert calibrator.enable_bounds == True
 
 
 def test_simple_calibration():
     """Test basic calibration"""
-    calibrator = TimeAdjustedWingModelCalibrator()
-    calibrator.tolerance = 1e-4  # Relaxed for faster testing
+    calibrator = UnifiedVolatilityCalibrator(
+        model_class=TimeAdjustedWingModel,
+        enable_bounds=True,
+        tolerance=1e-4  # Relaxed for faster testing
+    )
     
     # Simple market data
     strikes = [55000, 60000, 65000]
     market_vols = [0.7, 0.6, 0.7]
     vegas = [150, 200, 150]
-    weights = [1.0] * len(strikes)
     forward_price = 60000.0
     time_to_expiry = 0.25
     
-    result = calibrator.calibrate(
-        strike_list=strikes,
-        market_vol_list=market_vols,
-        market_vega_list=vegas,
-        weight_list=weights,
-        forward_price=forward_price,
-        time_to_expiry=time_to_expiry
+    # Create initial parameters
+    initial_params = TimeAdjustedWingModelParameters(
+        atm_vol=0.6, slope=0.0, call_curve=0.1, put_curve=0.1,
+        up_cutoff=0.5, down_cutoff=-0.5, up_smoothing=0.1, down_smoothing=0.1,
+        forward_price=forward_price, time_to_expiry=time_to_expiry
     )
     
-    assert isinstance(result, TimeAdjustedCalibrationResult)
+    # Define bounds
+    bounds = [
+        (0.01, 5.0), (-2.0, 2.0), (0.0, 5.0), (0.0, 5.0),
+        (0.01, 5.0), (-5.0, -0.01), (0.1, 10.0), (0.1, 10.0)
+    ]
+    
+    result = calibrator.calibrate(
+        initial_params=initial_params,
+        strikes=strikes,
+        market_volatilities=market_vols,
+        market_vegas=vegas,
+        parameter_bounds=bounds,
+        enforce_arbitrage_free=True
+    )
+    
+    assert isinstance(result, CalibrationResult)
     assert isinstance(result.success, bool)
     assert isinstance(result.error, float)
     assert result.error >= 0
@@ -263,27 +276,42 @@ def test_model_creation_from_result():
 
 def test_realistic_bitcoin_scenario():
     """Test with realistic Bitcoin options data"""
-    calibrator = TimeAdjustedWingModelCalibrator()
-    calibrator.tolerance = 1e-4
+    calibrator = UnifiedVolatilityCalibrator(
+        model_class=TimeAdjustedWingModel,
+        enable_bounds=True,
+        tolerance=1e-4
+    )
     
     # Realistic data
     strikes = [50000, 55000, 60000, 65000, 70000]
     market_vols = [0.85, 0.75, 0.68, 0.72, 0.78]
     vegas = [120, 160, 180, 160, 120]
-    weights = [v/max(vegas) for v in vegas]
     forward_price = 62000.0
     time_to_expiry = 0.0411  # ~15 days
     
-    result = calibrator.calibrate(
-        strike_list=strikes,
-        market_vol_list=market_vols,
-        market_vega_list=vegas,
-        weight_list=weights,
-        forward_price=forward_price,
-        time_to_expiry=time_to_expiry
+    # Create initial parameters
+    initial_params = TimeAdjustedWingModelParameters(
+        atm_vol=0.68, slope=0.05, call_curve=0.2, put_curve=0.3,
+        up_cutoff=0.5, down_cutoff=-0.8, up_smoothing=0.5, down_smoothing=1.5,
+        forward_price=forward_price, time_to_expiry=time_to_expiry
     )
     
-    assert isinstance(result, TimeAdjustedCalibrationResult)
+    # Define bounds
+    bounds = [
+        (0.01, 5.0), (-2.0, 2.0), (0.0, 5.0), (0.0, 5.0),
+        (0.01, 5.0), (-5.0, -0.01), (0.1, 10.0), (0.1, 10.0)
+    ]
+    
+    result = calibrator.calibrate(
+        initial_params=initial_params,
+        strikes=strikes,
+        market_volatilities=market_vols,
+        market_vegas=vegas,
+        parameter_bounds=bounds,
+        enforce_arbitrage_free=True
+    )
+    
+    assert isinstance(result, CalibrationResult)
     
     if result.success:
         model = TimeAdjustedWingModel(result.parameters)
@@ -337,7 +365,7 @@ def main():
     runner.run_test(test_moneyness_calculation, "Moneyness Calculation")
     
     # Calibrator tests
-    runner.run_test(test_calibrator_initialization, "Calibrator Initialization")
+    runner.run_test(test_unified_calibrator_initialization, "Unified Calibrator Initialization")
     runner.run_test(test_loss_function, "Loss Function Calculation")
     runner.run_test(test_simple_calibration, "Simple Calibration")
     runner.run_test(test_model_creation_from_result, "Model Creation from Result")

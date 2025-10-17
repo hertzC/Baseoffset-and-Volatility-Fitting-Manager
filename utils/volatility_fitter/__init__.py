@@ -4,6 +4,11 @@
 @Desc: Volatility Fitter Package Initialization
 '''
 
+# Base model infrastructure
+from .calibration_result import CalibrationResult
+from .base_volatility_model_abstract import BaseVolatilityModel
+from .unified_volatility_calibrator import UnifiedVolatilityCalibrator
+
 # Data processing modules
 from .processed_data_loader import (
     load_baseoffset_results,
@@ -20,16 +25,20 @@ from .volatility_calculator import (
 )
 
 # Wing Model modules
-from .wing_model import WingModel, WingModelParameters, WingModelCalibrator, create_wing_model_from_result
+from .wing_model import WingModel, WingModelParameters, create_wing_model_from_result
 
 # Time-Adjusted Wing Model modules  
 from .time_adjusted_wing_model import (
     TimeAdjustedWingModel, 
-    TimeAdjustedWingModelParameters,
-    TimeAdjustedWingModelCalibrator
+    TimeAdjustedWingModelParameters
 )
 
 __all__ = [
+    # Base Infrastructure
+    'BaseVolatilityModel',
+    'UnifiedVolatilityCalibrator', 
+    'CalibrationResult',
+    
     # Data Processing
     'load_baseoffset_results',
     'load_option_market_data',
@@ -44,11 +53,9 @@ __all__ = [
     # Wing Model
     'WingModel',
     'WingModelParameters', 
-    'WingModelCalibrator',
     'create_wing_model_from_result',
     
     # Time-Adjusted Wing Model
     'TimeAdjustedWingModel',
-    'TimeAdjustedWingModelParameters',
-    'TimeAdjustedWingModelCalibrator'
+    'TimeAdjustedWingModelParameters'
 ]

@@ -6,45 +6,20 @@
 @Desc: Time-Adjusted Wing Model Implementation with Class Structure
 '''
 
-from dataclasses import dataclass, fields
-from typing import Optional, Tuple
+from typing import Tuple
 import numpy as np
+from ..base_volatility_model_abstract import BaseVolatilityModel
+from .time_adjusted_wing_model_parameters import TimeAdjustedWingModelParameters
 
 
-@dataclass
-class TimeAdjustedWingModelParameters:
-    """Data class to hold time-adjusted wing model parameters"""
-    # Core volatility surface parameters
-    atm_vol: float  # At-the-money volatility
-    slope: float    # Controls the skew of the smile
-    call_curve: float     # Controls the curvature for the upside
-    put_curve: float   # Controls the curvature for the downside
-    up_cutoff: float       # Moneyness threshold for the upside parabola
-    down_cutoff: float       # Moneyness threshold for the downside parabola
-    up_smoothing: float        # Smoothing factor for the upside wing
-    down_smoothing: float        # Smoothing factor for the downside wing
-    
-    # Market context parameters
-    forward_price: float  # Forward price of the underlying
-    time_to_expiry: float  # Time to expiry in years
-
-    def get_parameter_names(self) -> list[str]:
-        return [field.name for field in fields(self) if field.name not in ['forward_price','time_to_expiry']]
-
-    def get_fitted_vol_parameter(self) -> list[float]:
-        return [float(getattr(self, name)) for name in self.get_parameter_names()]
-    
-
-class TimeAdjustedWingModel:
+class TimeAdjustedWingModel(BaseVolatilityModel):
     """Time-Adjusted Wing Model implementation for volatility surface modeling"""
     
     DAYS_IN_YEAR = 365.25
-    ARBITRAGE_LOWER_BOUND = 0.5
-    ARBITRAGE_UPPER_BOUND = 2.0
     
     def __init__(self, parameters: TimeAdjustedWingModelParameters, use_norm_term: bool=True):
         """Initialize time-adjusted wing model with parameters"""
-        self.parameters = parameters
+        super().__init__(parameters)
         self.use_norm_term = use_norm_term
 
     def get_normalization_term(self, time_to_expiry: float) -> float:
