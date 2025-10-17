@@ -1,0 +1,359 @@
+"""
+Simple Test Runner for Time-Adjusted Wing Model
+
+This script provides a simple way to run tests without requiring pytest.
+It's designed to be run directly and provides clear output about test results.
+"""
+
+import sys
+import os
+import traceback
+import time
+from typing import List, Tuple, Any
+
+# Add project root to path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.append(project_root)
+
+import numpy as np
+from utils.volatility_fitter.time_adjusted_wing_model.time_adjusted_wing_model import (
+    TimeAdjustedWingModel, 
+    TimeAdjustedWingModelParameters
+)
+from utils.volatility_fitter.time_adjusted_wing_model.time_adjusted_wing_model_calibrator import (
+    TimeAdjustedWingModelCalibrator,
+    TimeAdjustedCalibrationResult,
+    create_time_adjusted_wing_model_from_result
+)
+
+
+class SimpleTestRunner:
+    """Simple test runner that doesn't require pytest"""
+    
+    def __init__(self):
+        self.tests_run = 0
+        self.tests_passed = 0
+        self.tests_failed = 0
+        self.failed_tests = []
+    
+    def run_test(self, test_func, test_name: str):
+        """Run a single test function"""
+        self.tests_run += 1
+        try:
+            test_func()
+            print(f"✅ {test_name}")
+            self.tests_passed += 1
+        except Exception as e:
+            print(f"❌ {test_name}: {str(e)}")
+            self.tests_failed += 1
+            self.failed_tests.append((test_name, str(e), traceback.format_exc()))
+    
+    def print_summary(self):
+        """Print test summary"""
+        print("\n" + "="*60)
+        print(f"TEST SUMMARY")
+        print("="*60)
+        print(f"Total tests run: {self.tests_run}")
+        print(f"Passed: {self.tests_passed}")
+        print(f"Failed: {self.tests_failed}")
+        
+        if self.failed_tests:
+            print(f"\nFAILED TESTS:")
+            for test_name, error, tb in self.failed_tests:
+                print(f"\n❌ {test_name}")
+                print(f"   Error: {error}")
+        
+        success_rate = (self.tests_passed / self.tests_run) * 100 if self.tests_run > 0 else 0
+        print(f"\nSuccess Rate: {success_rate:.1f}%")
+        
+        if self.tests_failed == 0:
+            print("🎉 All tests passed!")
+        else:
+            print(f"⚠️  {self.tests_failed} test(s) failed")
+
+
+def test_parameters_basic():
+    """Test basic parameter functionality"""
+    params = TimeAdjustedWingModelParameters(
+        atm_vol=0.6, slope=0.08, call_curve=5.0, put_curve=5.0,
+        up_cutoff=0.5, down_cutoff=-0.95, up_smoothing=5.0, down_smoothing=5.0,
+        forward_price=60000.0, time_to_expiry=0.25
+    )
+    
+    assert params.atm_vol == 0.6
+    assert params.forward_price == 60000.0
+    assert len(params.get_parameter_names()) == 8
+    assert len(params.get_fitted_vol_parameter()) == 8
+
+
+def test_model_initialization():
+    """Test model initialization"""
+    params = TimeAdjustedWingModelParameters(
+        atm_vol=0.6, slope=0.08, call_curve=5.0, put_curve=5.0,
+        up_cutoff=0.5, down_cutoff=-0.95, up_smoothing=5.0, down_smoothing=5.0,
+        forward_price=60000.0, time_to_expiry=0.25
+    )
+    
+    model = TimeAdjustedWingModel(params)
+    assert model.parameters == params
+    assert model.use_norm_term == True
+
+
+def test_volatility_calculation():
+    """Test volatility calculation"""
+    params = TimeAdjustedWingModelParameters(
+        atm_vol=0.6, slope=0.08, call_curve=5.0, put_curve=5.0,
+        up_cutoff=0.5, down_cutoff=-0.95, up_smoothing=5.0, down_smoothing=5.0,
+        forward_price=60000.0, time_to_expiry=0.25
+    )
+    
+    model = TimeAdjustedWingModel(params)
+    
+    # Test ATM volatility
+    atm_vol = model.calculate_volatility_from_strike(60000.0)
+    assert isinstance(atm_vol, float)
+    assert 0.01 < atm_vol < 2.0
+    
+    # Test OTM volatilities
+    otm_call_vol = model.calculate_volatility_from_strike(70000.0)
+    otm_put_vol = model.calculate_volatility_from_strike(50000.0)
+    
+    assert isinstance(otm_call_vol, float)
+    assert isinstance(otm_put_vol, float)
+    assert 0.01 < otm_call_vol < 2.0
+    assert 0.01 < otm_put_vol < 2.0
+
+
+def test_volatility_smile_shape():
+    """Test that volatility smile has reasonable shape"""
+    params = TimeAdjustedWingModelParameters(
+        atm_vol=0.6, slope=0.08, call_curve=5.0, put_curve=5.0,
+        up_cutoff=0.5, down_cutoff=-0.95, up_smoothing=5.0, down_smoothing=5.0,
+        forward_price=60000.0, time_to_expiry=0.25
+    )
+    
+    model = TimeAdjustedWingModel(params)
+    
+    strikes = [45000, 50000, 55000, 60000, 65000, 70000, 75000]
+    vols = [model.calculate_volatility_from_strike(strike) for strike in strikes]
+    
+    # All volatilities should be positive and reasonable
+    assert all(0.01 < vol < 2.0 for vol in vols)
+    
+    # Find ATM volatility (should be near minimum for typical smile)
+    atm_idx = strikes.index(60000)
+    atm_vol = vols[atm_idx]
+    
+    # ATM vol should be reasonable
+    assert 0.1 < atm_vol < 1.5
+
+
+def test_moneyness_calculation():
+    """Test moneyness calculation"""
+    params = TimeAdjustedWingModelParameters(
+        atm_vol=0.6, slope=0.08, call_curve=5.0, put_curve=5.0,
+        up_cutoff=0.5, down_cutoff=-0.95, up_smoothing=5.0, down_smoothing=5.0,
+        forward_price=60000.0, time_to_expiry=0.25
+    )
+    
+    model = TimeAdjustedWingModel(params)
+    
+    # ATM moneyness should be close to 0
+    atm_moneyness = model.calculate_moneyness(60000.0, 60000.0, 0.25, 0.6)
+    assert abs(atm_moneyness) < 0.2
+    
+    # OTM call should be positive
+    otm_call_moneyness = model.calculate_moneyness(60000.0, 70000.0, 0.25, 0.6)
+    assert otm_call_moneyness > 0
+    
+    # OTM put should be negative
+    otm_put_moneyness = model.calculate_moneyness(60000.0, 50000.0, 0.25, 0.6)
+    assert otm_put_moneyness < 0
+
+
+def test_calibrator_initialization():
+    """Test calibrator initialization"""
+    calibrator = TimeAdjustedWingModelCalibrator()
+    assert calibrator.enable_bounds == True
+    assert calibrator.method == "SLSQP"
+    assert calibrator.use_norm_term == True
+    
+    # Test parameter bounds
+    bounds = calibrator._get_parameter_bounds()
+    assert len(bounds) == 8
+    
+    for bound in bounds:
+        assert len(bound) == 2
+        assert bound[0] < bound[1]
+
+
+def test_loss_function():
+    """Test loss function calculation"""
+    calibrator = TimeAdjustedWingModelCalibrator()
+    
+    # Sample market data
+    strikes = [50000, 55000, 60000, 65000, 70000]
+    market_vols = [0.8, 0.7, 0.6, 0.7, 0.8]
+    vegas = [100, 150, 200, 150, 100]
+    weights = [1.0] * len(strikes)
+    forward_price = 60000.0
+    time_to_expiry = 0.25
+    
+    # Sample parameters
+    params = [0.6, 0.08, 5.0, 5.0, 0.5, -0.95, 5.0, 5.0]
+    args = (strikes, market_vols, vegas, weights, forward_price, time_to_expiry, True)
+    
+    loss = calibrator._loss_function(params, *args)
+    assert isinstance(loss, float)
+    assert loss >= 0
+    assert not np.isnan(loss)
+    assert not np.isinf(loss)
+
+
+def test_simple_calibration():
+    """Test basic calibration"""
+    calibrator = TimeAdjustedWingModelCalibrator()
+    calibrator.tolerance = 1e-4  # Relaxed for faster testing
+    
+    # Simple market data
+    strikes = [55000, 60000, 65000]
+    market_vols = [0.7, 0.6, 0.7]
+    vegas = [150, 200, 150]
+    weights = [1.0] * len(strikes)
+    forward_price = 60000.0
+    time_to_expiry = 0.25
+    
+    result = calibrator.calibrate(
+        strike_list=strikes,
+        market_vol_list=market_vols,
+        market_vega_list=vegas,
+        weight_list=weights,
+        forward_price=forward_price,
+        time_to_expiry=time_to_expiry
+    )
+    
+    assert isinstance(result, TimeAdjustedCalibrationResult)
+    assert isinstance(result.success, bool)
+    assert isinstance(result.error, float)
+    assert result.error >= 0
+
+
+def test_model_creation_from_result():
+    """Test creating model from calibration result"""
+    # Sample optimized parameters
+    optimized_params = [0.65, 0.08, 4.5, 4.5, 0.4, -0.8, 4.0, 4.0]
+    forward_price = 60000.0
+    time_to_expiry = 0.25
+    
+    model_params = create_time_adjusted_wing_model_from_result(
+        optimized_params, forward_price, time_to_expiry
+    )
+    
+    assert isinstance(model_params, TimeAdjustedWingModelParameters)
+    assert model_params.forward_price == forward_price
+    assert model_params.time_to_expiry == time_to_expiry
+    
+    # Test that model can be created and used
+    model = TimeAdjustedWingModel(model_params)
+    vol = model.calculate_volatility_from_strike(60000.0)
+    assert isinstance(vol, float)
+    assert 0.01 < vol < 2.0
+
+
+def test_realistic_bitcoin_scenario():
+    """Test with realistic Bitcoin options data"""
+    calibrator = TimeAdjustedWingModelCalibrator()
+    calibrator.tolerance = 1e-4
+    
+    # Realistic data
+    strikes = [50000, 55000, 60000, 65000, 70000]
+    market_vols = [0.85, 0.75, 0.68, 0.72, 0.78]
+    vegas = [120, 160, 180, 160, 120]
+    weights = [v/max(vegas) for v in vegas]
+    forward_price = 62000.0
+    time_to_expiry = 0.0411  # ~15 days
+    
+    result = calibrator.calibrate(
+        strike_list=strikes,
+        market_vol_list=market_vols,
+        market_vega_list=vegas,
+        weight_list=weights,
+        forward_price=forward_price,
+        time_to_expiry=time_to_expiry
+    )
+    
+    assert isinstance(result, TimeAdjustedCalibrationResult)
+    
+    if result.success:
+        model = TimeAdjustedWingModel(result.parameters)
+        fitted_vols = [model.calculate_volatility_from_strike(s) for s in strikes]
+        
+        # Check reasonableness
+        assert all(0.1 < vol < 2.0 for vol in fitted_vols)
+        
+        # Check RMSE
+        rmse = np.sqrt(np.mean([(f - m)**2 for f, m in zip(fitted_vols, market_vols)]))
+        assert rmse < 0.5
+
+
+def test_performance_single_calculation():
+    """Test performance of single volatility calculation"""
+    params = TimeAdjustedWingModelParameters(
+        atm_vol=0.6, slope=0.08, call_curve=5.0, put_curve=5.0,
+        up_cutoff=0.5, down_cutoff=-0.95, up_smoothing=5.0, down_smoothing=5.0,
+        forward_price=60000.0, time_to_expiry=0.25
+    )
+    
+    model = TimeAdjustedWingModel(params)
+    
+    # Warm up
+    model.calculate_volatility_from_strike(60000.0)
+    
+    # Time multiple calculations
+    start_time = time.time()
+    for _ in range(100):
+        model.calculate_volatility_from_strike(60000.0)
+    end_time = time.time()
+    
+    avg_time = (end_time - start_time) / 100
+    
+    # Should be fast (less than 10ms per calculation for this test)
+    assert avg_time < 0.01
+
+
+def main():
+    """Run all tests"""
+    print("🧪 Running Time-Adjusted Wing Model Tests")
+    print("="*60)
+    
+    runner = SimpleTestRunner()
+    
+    # Basic functionality tests
+    runner.run_test(test_parameters_basic, "Parameters Basic Functionality")
+    runner.run_test(test_model_initialization, "Model Initialization")
+    runner.run_test(test_volatility_calculation, "Volatility Calculation")
+    runner.run_test(test_volatility_smile_shape, "Volatility Smile Shape")
+    runner.run_test(test_moneyness_calculation, "Moneyness Calculation")
+    
+    # Calibrator tests
+    runner.run_test(test_calibrator_initialization, "Calibrator Initialization")
+    runner.run_test(test_loss_function, "Loss Function Calculation")
+    runner.run_test(test_simple_calibration, "Simple Calibration")
+    runner.run_test(test_model_creation_from_result, "Model Creation from Result")
+    
+    # Integration tests
+    runner.run_test(test_realistic_bitcoin_scenario, "Realistic Bitcoin Scenario")
+    
+    # Performance tests
+    runner.run_test(test_performance_single_calculation, "Performance Single Calculation")
+    
+    # Print summary
+    runner.print_summary()
+    
+    return runner.tests_failed == 0
+
+
+if __name__ == "__main__":
+    success = main()
+    sys.exit(0 if success else 1)
