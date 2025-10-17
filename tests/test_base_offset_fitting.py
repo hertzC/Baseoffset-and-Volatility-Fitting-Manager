@@ -1,5 +1,5 @@
 """
-Unit tests for Bitcoin Options Analysis Pipeline
+Unit tests for Base Offset Fitting Pipeline
 
 Tests synthetic option creation and fitting functionality with sample data
 to ensure consistent results across code changes.

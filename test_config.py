@@ -69,7 +69,7 @@ def run_targeted_tests(change_type="all"):
     
     # Run pytest with the selected tests
     exit_code = pytest.main([
-        "tests/test_bitcoin_options_analysis.py",
+        "tests/test_base_offset_fitting.py",
         "-v",
         "--tb=short"
     ] + test_args)

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Test Suite for Bitcoin Options Analysis Notebook
+Test Suite for Base Offset Fitting Notebook
 
 This test suite validates the key functionality and components used in the 
-bitcoin_options_analysis.ipynb notebook to ensure data processing, analysis,
+base_offset_fitting.ipynb notebook to ensure data processing, analysis,
 and visualization components work correctly.
 
 Run with: python test_notebook.py
@@ -287,7 +287,7 @@ class TestNotebookWorkflow:
 
 def run_tests():
     """Run all tests and provide summary."""
-    print("🧪 Running Bitcoin Options Analysis Notebook Test Suite")
+    print("🧪 Running Base Offset Fitting Notebook Test Suite")
     print("=" * 60)
     
     # Test classes to run

@@ -13,7 +13,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(str(Path(__file__).parent))
 
-from tests.test_bitcoin_options_analysis import TestSampleDataGenerator, WLSRegressor
+from tests.test_base_offset_fitting import TestSampleDataGenerator, WLSRegressor
 from datetime import datetime
 
 def demonstrate_regression_testing():
@@ -81,7 +81,7 @@ def demonstrate_regression_testing():
     
     print("\n🚀 To run the full test suite:")
     print("   python run_tests.py")
-    print("   python -m pytest tests/test_bitcoin_options_analysis.py -v")
+    print("   python -m pytest tests/test_base_offset_fitting.py -v")
 
 if __name__ == "__main__":
     demonstrate_regression_testing()

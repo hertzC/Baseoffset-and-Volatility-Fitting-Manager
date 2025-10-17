@@ -23,7 +23,7 @@ def run_tests():
     # Run pytest with verbose output and coverage if available
     cmd = [
         sys.executable, "-m", "pytest", 
-        "tests/test_bitcoin_options_analysis.py",
+        "tests/test_base_offset_fitting.py",
         "-v",  # Verbose output
         "--tb=short",  # Short traceback format
         "--no-header",  # Remove pytest header

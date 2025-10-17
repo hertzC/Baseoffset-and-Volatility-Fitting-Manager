@@ -30,7 +30,7 @@ class DevelopmentWorkflow:
         # Run tests and capture results
         result = subprocess.run([
             python_cmd, "-m", "pytest", 
-            "tests/test_bitcoin_options_analysis.py",
+            "tests/test_base_offset_fitting.py",
             "--tb=short", "-v"
         ], capture_output=True, text=True, cwd=self.project_root)
         
@@ -80,7 +80,7 @@ class DevelopmentWorkflow:
         # Run current tests
         result = subprocess.run([
             python_cmd, "-m", "pytest", 
-            "tests/test_bitcoin_options_analysis.py",
+            "tests/test_base_offset_fitting.py",
             "--tb=short", "-v"
         ], capture_output=True, text=True, cwd=self.project_root)
         
@@ -116,7 +116,7 @@ class DevelopmentWorkflow:
         
         result = subprocess.run([
             python_cmd, "-m", "pytest", 
-            "tests/test_bitcoin_options_analysis.py",
+            "tests/test_base_offset_fitting.py",
             "--collect-only", "-q"
         ], capture_output=True, text=True, cwd=self.project_root)
         
