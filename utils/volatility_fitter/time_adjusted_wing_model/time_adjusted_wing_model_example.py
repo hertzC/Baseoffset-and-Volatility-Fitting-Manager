@@ -28,12 +28,12 @@ def demo_time_adjusted_wing_model():
     custom_params = TimeAdjustedWingModelParameters(
         atm_vol=0.75,           # 75% ATM volatility
         slope=-0.1,             # Negative skew
-        curve_up=0.3,           # Upside curvature
-        curve_down=0.5,         # Downside curvature  
-        cut_up=1.2,             # Upside cutoff
-        cut_dn=-1.0,            # Downside cutoff
-        mSmUp=0.4,              # Upside smoothing
-        mSmDn=0.6,              # Downside smoothing
+        call_curve=0.3,           # Upside curvature
+        put_curve=0.5,         # Downside curvature  
+        up_cutoff=1.2,             # Upside cutoff
+        down_cutoff=-1.0,            # Downside cutoff
+        up_smoothing=0.4,              # Upside smoothing
+        down_smoothing=0.6,              # Downside smoothing
         forward_price=60000.0,  # BTC forward price
         time_to_expiry=0.25     # 3 months to expiry
     )

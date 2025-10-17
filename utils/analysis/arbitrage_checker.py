@@ -144,7 +144,7 @@ def check_call_put_parity(
     put_prices: List[float],
     forward_price: float,
     discount_factor: float = 1.0,
-    tolerance: float = 1e-4
+    tolerance: float = 0.1
 ) -> List[Dict[str, Any]]:
     """
     Check call-put parity violations.

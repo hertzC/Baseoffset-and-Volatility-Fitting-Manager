@@ -31,7 +31,8 @@ class TimeAdjustedWingModelCalibrator:
                  enable_bounds: bool = True,
                  tolerance: float = 1e-16,
                  method: str = "SLSQP",
-                 arbitrage_penalty: float = 1e5):
+                 arbitrage_penalty: float = 1e5,
+                 use_norm_term: bool = True):
         """
         Initialize calibrator
         
@@ -45,11 +46,13 @@ class TimeAdjustedWingModelCalibrator:
         self.tolerance = tolerance
         self.method = method
         self.arbitrage_penalty = arbitrage_penalty
+        self.use_norm_term = use_norm_term
         
     def calibrate(self,
                   strike_list: List[float],
                   market_vol_list: List[float],
                   market_vega_list: List[float],
+                  weight_list: List[float],
                   forward_price: float,
                   time_to_expiry: float,
                   initial_atm_vol: float = 0.8,
@@ -86,8 +89,7 @@ class TimeAdjustedWingModelCalibrator:
         bounds = self._get_parameter_bounds() if self.enable_bounds else None
         
         # Prepare arguments for loss function
-        args = (strike_list, market_vol_list, market_vega_list, 
-               forward_price, time_to_expiry, enforce_arbitrage_free)
+        args = (strike_list, market_vol_list, market_vega_list, weight_list, forward_price, time_to_expiry, enforce_arbitrage_free)
         
         try:
             # Run optimization
@@ -104,12 +106,12 @@ class TimeAdjustedWingModelCalibrator:
             optimal_params = TimeAdjustedWingModelParameters(
                 atm_vol=result.x[0],
                 slope=result.x[1],
-                curve_up=result.x[2],
-                curve_down=result.x[3],
-                cut_up=result.x[4],
-                cut_dn=result.x[5],
-                mSmUp=result.x[6],
-                mSmDn=result.x[7],
+                call_curve=result.x[2],
+                put_curve=result.x[3],
+                up_cutoff=result.x[4],
+                down_cutoff=result.x[5],
+                up_smoothing=result.x[6],
+                down_smoothing=result.x[7],
                 forward_price=forward_price,
                 time_to_expiry=time_to_expiry
             )
@@ -125,9 +127,10 @@ class TimeAdjustedWingModelCalibrator:
             
         except Exception as e:
             # Return failed result with default parameters
+            print(f"Exception: {e}")
             default_params = TimeAdjustedWingModelParameters(
-                atm_vol=initial_atm_vol, slope=0.0, curve_up=0.5, curve_down=0.5,
-                cut_up=1.0, cut_dn=-1.0, mSmUp=0.5, mSmDn=0.5,
+                atm_vol=initial_atm_vol, slope=0.0, call_curve=0.5, put_curve=0.5,
+                up_cutoff=1.0, down_cutoff=-1.0, up_smoothing=0.5, down_smoothing=0.5,
                 forward_price=forward_price, time_to_expiry=time_to_expiry
             )
             
@@ -143,6 +146,7 @@ class TimeAdjustedWingModelCalibrator:
                       strike_list: List[float],
                       market_vol_list: List[float],
                       market_vega_list: List[float],
+                      weight_list: List[float],
                       forward_price: float,
                       time_to_expiry: float,
                       enforce_arbitrage_free: bool = True) -> float:
@@ -166,20 +170,19 @@ class TimeAdjustedWingModelCalibrator:
             current_params = TimeAdjustedWingModelParameters(
                 atm_vol=solve_params[0],
                 slope=solve_params[1],
-                curve_up=solve_params[2],
-                curve_down=solve_params[3],
-                cut_up=solve_params[4],
-                cut_dn=solve_params[5],
-                mSmUp=solve_params[6],
-                mSmDn=solve_params[7],
+                call_curve=solve_params[2],
+                put_curve=solve_params[3],
+                up_cutoff=solve_params[4],
+                down_cutoff=solve_params[5],
+                up_smoothing=solve_params[6],
+                down_smoothing=solve_params[7],
                 forward_price=forward_price,
                 time_to_expiry=time_to_expiry
             )
             
-            wing_model = TimeAdjustedWingModel(current_params)
+            wing_model = TimeAdjustedWingModel(current_params, self.use_norm_term)
             
             # Calculate vega-weighted Mean Squared Error (MSE)
-            max_vega = max(market_vega_list) if market_vega_list else 1.0
             squared_errors = []
             
             for i, strike in enumerate(strike_list):
@@ -190,8 +193,7 @@ class TimeAdjustedWingModelCalibrator:
                     return 1e10
                 
                 # Vega-weighted error
-                weight = market_vega_list[i] / max_vega if market_vega_list else 1.0
-                weighted_error = ((model_vol - market_vol_list[i]) * weight) ** 2
+                weighted_error = ((model_vol - market_vol_list[i]) * market_vega_list[i] * weight_list[i]) ** 2
                 squared_errors.append(weighted_error)
             
             # Root mean squared error
@@ -203,11 +205,13 @@ class TimeAdjustedWingModelCalibrator:
                 _, g_values = wing_model.calculate_durrleman_condition()
                 if np.min(g_values) < 0:
                     arbitrage_penalty = self.arbitrage_penalty
+                    # print(f"arbitrage found with params: {current_params}")
             
-            return rmse #+ arbitrage_penalty
+            return rmse + arbitrage_penalty
             
-        except Exception:
+        except Exception as e:
             # Return high penalty for invalid parameters
+            print(f"Exception in loss_functino: {e}")
             return 1e10
     
     def _get_parameter_bounds(self) -> List[Tuple[float, float]]:
@@ -215,17 +219,17 @@ class TimeAdjustedWingModelCalibrator:
         return [
             (0.01, 5.0),    # atm_vol: reasonable volatility range
             (-2.0, 2.0),    # slope: reasonable skew range
-            (-2.0, 2.0),    # curve_up: curvature bounds
-            (-2.0, 2.0),    # curve_down: curvature bounds
-            (0.1, 5.0),     # cut_up: positive cutoff
-            (-5.0, -0.1),   # cut_dn: negative cutoff
-            (0.1, 2.0),     # mSmUp: smoothing parameter
-            (0.1, 2.0)      # mSmDn: smoothing parameter
+            (0.0, 5.0),    # curve_up: curvature bounds
+            (0.0, 5.0),    # curve_down: curvature bounds
+            (0.01, 5.0),     # cut_up: positive cutoff
+            (-5.0, -0.01),   # cut_dn: negative cutoff
+            (0.1, 10.0),     # mSmUp: smoothing parameter
+            (0.1, 10.0)      # mSmDn: smoothing parameter
         ]
 
 
 def create_time_adjusted_wing_model_from_result(
-    result: optimize.OptimizeResult,
+    result: List|np.ndarray,
     forward_price: float,
     time_to_expiry: float
 ) -> TimeAdjustedWingModelParameters:
@@ -241,14 +245,14 @@ def create_time_adjusted_wing_model_from_result(
         TimeAdjustedWingModelParameters object
     """
     return TimeAdjustedWingModelParameters(
-        atm_vol=result.x[0],
-        slope=result.x[1],
-        curve_up=result.x[2],
-        curve_down=result.x[3],
-        cut_up=result.x[4],
-        cut_dn=result.x[5],
-        mSmUp=result.x[6],
-        mSmDn=result.x[7],
+        atm_vol=result[0],
+        slope=result[1],
+        call_curve=result[2],
+        put_curve=result[3],
+        up_cutoff=result[4],
+        down_cutoff=result[5],
+        up_smoothing=result[6],
+        down_smoothing=result[7],
         forward_price=forward_price,
         time_to_expiry=time_to_expiry
     )

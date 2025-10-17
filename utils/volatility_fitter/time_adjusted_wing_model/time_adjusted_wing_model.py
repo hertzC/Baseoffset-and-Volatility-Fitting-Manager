@@ -6,7 +6,7 @@
 @Desc: Time-Adjusted Wing Model Implementation with Class Structure
 '''
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Optional, Tuple
 import numpy as np
 
@@ -17,39 +17,46 @@ class TimeAdjustedWingModelParameters:
     # Core volatility surface parameters
     atm_vol: float  # At-the-money volatility
     slope: float    # Controls the skew of the smile
-    curve_up: float     # Controls the curvature for the upside
-    curve_down: float   # Controls the curvature for the downside
-    cut_up: float       # Moneyness threshold for the upside parabola
-    cut_dn: float       # Moneyness threshold for the downside parabola
-    mSmUp: float        # Smoothing factor for the upside wing
-    mSmDn: float        # Smoothing factor for the downside wing
+    call_curve: float     # Controls the curvature for the upside
+    put_curve: float   # Controls the curvature for the downside
+    up_cutoff: float       # Moneyness threshold for the upside parabola
+    down_cutoff: float       # Moneyness threshold for the downside parabola
+    up_smoothing: float        # Smoothing factor for the upside wing
+    down_smoothing: float        # Smoothing factor for the downside wing
     
     # Market context parameters
     forward_price: float  # Forward price of the underlying
     time_to_expiry: float  # Time to expiry in years
-    
-    def __post_init__(self):
-        """Validate parameters after initialization"""
-        if self.atm_vol <= 0:
-            raise ValueError("atm_vol must be positive")
-        if self.cut_dn >= 0:
-            raise ValueError("cut_dn must be negative")
-        if self.cut_up <= 0:
-            raise ValueError("cut_up must be positive")
-        if self.forward_price <= 0:
-            raise ValueError("forward_price must be positive")
-        if self.time_to_expiry <= 0:
-            raise ValueError("time_to_expiry must be positive")
 
+    def get_parameter_names(self) -> list[str]:
+        return [field.name for field in fields(self) if field.name not in ['forward_price','time_to_expiry']]
+
+    def get_fitted_vol_parameter(self) -> list[float]:
+        return [float(getattr(self, name)) for name in self.get_parameter_names()]
+    
 
 class TimeAdjustedWingModel:
     """Time-Adjusted Wing Model implementation for volatility surface modeling"""
     
     DAYS_IN_YEAR = 365.25
+    ARBITRAGE_LOWER_BOUND = 0.5
+    ARBITRAGE_UPPER_BOUND = 2.0
     
-    def __init__(self, parameters: TimeAdjustedWingModelParameters):
+    def __init__(self, parameters: TimeAdjustedWingModelParameters, use_norm_term: bool=True):
         """Initialize time-adjusted wing model with parameters"""
         self.parameters = parameters
+        self.use_norm_term = use_norm_term
+
+    def get_normalization_term(self, time_to_expiry: float) -> float:
+        # Calculate Normalization Term
+        if not self.use_norm_term:
+            return 1.0
+        days_to_expiry = time_to_expiry * self.DAYS_IN_YEAR
+        n_term = 0.2 * np.sqrt(30 / days_to_expiry) if days_to_expiry > 0 else 0
+        if n_term <= 0:
+            raise Exception(f"the normalization term returned is not positive, value={n_term}")
+        return n_term
+
     
     def calculate_moneyness(self, forward_price: float, strike_price: float, 
                           time_to_expiry: float, atm_vol: float) -> float:
@@ -78,10 +85,7 @@ class TimeAdjustedWingModel:
             return 0.0
             
         d1 = (np.log(forward_price / strike_price) + (atm_vol**2 / 2) * time_to_expiry) / sigma_sqrt_t
-
-        # Calculate Normalization Term
-        days_to_expiry = time_to_expiry * self.DAYS_IN_YEAR
-        n_term = 0.2 * np.sqrt(30 / days_to_expiry) if days_to_expiry > 0 else 0
+        n_term = self.get_normalization_term(time_to_expiry)
 
         # Final moneyness as defined in the document
         moneyness = -n_term * d1
@@ -126,55 +130,55 @@ class TimeAdjustedWingModel:
         # --- 1. Calculate Smoothing Parameters ---
         
         # Volatility at the cutoff points using the central parabola formulas
-        vol_at_cut_up = params.atm_vol + params.slope * params.cut_up + params.curve_up * params.cut_up**2
-        vol_at_cut_dn = params.atm_vol + params.slope * params.cut_dn + params.curve_down * params.cut_dn**2
+        vol_at_cut_up = params.atm_vol + params.slope * params.up_cutoff + params.call_curve * params.up_cutoff**2
+        vol_at_cut_dn = params.atm_vol + params.slope * params.down_cutoff + params.put_curve * params.down_cutoff**2
 
         # Curvature for the smoothing wings
-        curve_smooth_up = (-(params.slope + 2 * params.curve_up * params.cut_up) / 
-                          (2 * params.cut_up * params.mSmUp) if (params.cut_up * params.mSmUp) != 0 else 0)
-        curve_smooth_down = (-(params.slope + 2 * params.curve_down * params.cut_dn) / 
-                            (2 * params.cut_dn * params.mSmDn) if (params.cut_dn * params.mSmDn) != 0 else 0)
+        curve_smooth_up = (-(params.slope + 2 * params.call_curve * params.up_cutoff) / 
+                          (2 * params.up_cutoff * params.up_smoothing) if (params.up_cutoff * params.up_smoothing) != 0 else 0)
+        curve_smooth_down = (-(params.slope + 2 * params.put_curve * params.down_cutoff) / 
+                            (2 * params.down_cutoff * params.down_smoothing) if (params.down_cutoff * params.down_smoothing) != 0 else 0)
 
         # Slope for the smoothing wings
-        slope_smooth_up = -2 * curve_smooth_up * params.cut_up * (1 + params.mSmUp)
-        slope_smooth_down = -2 * curve_smooth_down * params.cut_dn * (1 + params.mSmDn)
+        slope_smooth_up = -2 * curve_smooth_up * params.up_cutoff * (1 + params.up_smoothing)
+        slope_smooth_down = -2 * curve_smooth_down * params.down_cutoff * (1 + params.down_smoothing)
 
         # ATM volatility for the smoothing wings
-        atm_vol_smooth_up = vol_at_cut_up - curve_smooth_up * params.cut_up**2 - slope_smooth_up * params.cut_up
-        atm_vol_smooth_down = vol_at_cut_dn - curve_smooth_down * params.cut_dn**2 - slope_smooth_down * params.cut_dn
+        atm_vol_smooth_up = vol_at_cut_up - curve_smooth_up * params.up_cutoff**2 - slope_smooth_up * params.up_cutoff
+        atm_vol_smooth_down = vol_at_cut_dn - curve_smooth_down * params.down_cutoff**2 - slope_smooth_down * params.down_cutoff
 
         # --- 2. Determine Volatility based on Moneyness Region ---
         
         # Region 1: Central Upside Parabola (OTM Calls)
-        if 0 <= moneyness <= params.cut_up:
-            return params.atm_vol + params.slope * moneyness + params.curve_up * moneyness**2
+        if 0 <= moneyness <= params.up_cutoff:
+            return params.atm_vol + params.slope * moneyness + params.call_curve * moneyness**2
         
         # Region 2: Central Downside Parabola (OTM Puts)
-        elif params.cut_dn <= moneyness < 0:
-            return params.atm_vol + params.slope * moneyness + params.curve_down * moneyness**2
+        elif params.down_cutoff <= moneyness < 0:
+            return params.atm_vol + params.slope * moneyness + params.put_curve * moneyness**2
         
         # Region 3: Upside Smoothing Wing
-        elif params.cut_up < moneyness <= params.cut_up * (1 + params.mSmUp):
+        elif params.up_cutoff < moneyness <= params.up_cutoff * (1 + params.up_smoothing):
             return atm_vol_smooth_up + slope_smooth_up * moneyness + curve_smooth_up * moneyness**2
             
         # Region 4: Downside Smoothing Wing
-        elif params.cut_dn * (1 + params.mSmDn) <= moneyness < params.cut_dn:
+        elif params.down_cutoff * (1 + params.down_smoothing) <= moneyness < params.down_cutoff:
             return atm_vol_smooth_down + slope_smooth_down * moneyness + curve_smooth_down * moneyness**2
             
         # Region 5: Flat Extrapolation (Far OTM Calls)
-        elif moneyness > params.cut_up * (1 + params.mSmUp):
-            edge_moneyness = params.cut_up * (1 + params.mSmUp)
+        elif moneyness > params.up_cutoff * (1 + params.up_smoothing):
+            edge_moneyness = params.up_cutoff * (1 + params.up_smoothing)
             return atm_vol_smooth_up + slope_smooth_up * edge_moneyness + curve_smooth_up * edge_moneyness**2
             
         # Region 6: Flat Extrapolation (Far OTM Puts)
-        elif moneyness < params.cut_dn * (1 + params.mSmDn):
-            edge_moneyness = params.cut_dn * (1 + params.mSmDn)
+        elif moneyness < params.down_cutoff * (1 + params.down_smoothing):
+            edge_moneyness = params.down_cutoff * (1 + params.down_smoothing)
             return atm_vol_smooth_down + slope_smooth_down * edge_moneyness + curve_smooth_down * edge_moneyness**2
             
         else:
             raise ValueError(f"Invalid moneyness value: {moneyness}")
     
-    def calculate_durrleman_condition(self, num_points: int = 201) -> Tuple[np.ndarray, np.ndarray]:
+    def calculate_durrleman_condition(self, num_points: int = 501) -> Tuple[np.ndarray, np.ndarray]:
         """
         Calculate the Durrleman no-arbitrage condition g(k).
         
@@ -187,7 +191,7 @@ class TimeAdjustedWingModel:
         params = self.parameters
         
         # Create strike range
-        strikes = np.linspace(params.forward_price * 0.5, params.forward_price * 1.5, num_points)
+        strikes = np.linspace(params.forward_price * self.ARBITRAGE_LOWER_BOUND, params.forward_price * self.ARBITRAGE_UPPER_BOUND, num_points)
         log_moneyness_k = np.log(strikes / params.forward_price)
         
         # Calculate total variance for each strike
@@ -219,6 +223,38 @@ class TimeAdjustedWingModel:
         g_k = term1 - term2 + term3
         
         return log_moneyness_k, g_k
+    
+    def get_strike_ranges(self) -> dict:
+        """
+        Calculate equivalent strike ranges from moneyness ranges
+        Note: For time-adjusted wing model, we need to convert from model-specific moneyness to strikes
+        
+        Returns:
+            dict: Dictionary containing strike boundaries for each region
+        """
+        moneyness_ranges = {'downSmoothing': self.parameters.down_cutoff * (1+self.parameters.down_smoothing),
+                            'downCutOff': self.parameters.down_cutoff,
+                            'upCutOff': self.parameters.up_cutoff,
+                            'upSmoothing': self.parameters.up_cutoff * (1+self.parameters.up_smoothing)}
+        strike_ranges = {}
+        for region, moenyness in moneyness_ranges.items():
+            # For time-adjusted wing model, we need to solve for strike from moneyness
+            # Since moneyness = -n_term * d1, and d1 involves strike, this is an approximation
+            # We'll use the inverse relationship: strike ≈ forward * exp(-moneyness / n_term)   
+            strike_ranges[region] = self.get_strike_from_moneyness(moenyness)                     
+        
+        return strike_ranges
+        
+    def get_strike_from_moneyness(self, moneyness: float) -> float:
+        """
+        given the moneyness, return the equivalent strike price
+        """  
+        n_term = self.get_normalization_term(self.parameters.time_to_expiry)  # normalization_term is positive
+        d1_approx = -moneyness / n_term
+        sigma_sqrt_t = self.parameters.atm_vol * np.sqrt(self.parameters.time_to_expiry)
+        return self.parameters.forward_price * np.exp(
+            -d1_approx * sigma_sqrt_t + self.parameters.atm_vol**2 * self.parameters.time_to_expiry / 2)
+
     
     def generate_volatility_surface(self, strike_range: Tuple[float, float], 
                                   num_strikes: int = 50) -> Tuple[np.ndarray, np.ndarray]:

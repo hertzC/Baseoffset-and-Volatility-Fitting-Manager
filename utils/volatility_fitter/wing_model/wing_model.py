@@ -18,6 +18,68 @@ class WingModel:
         """Initialize wing model with parameters"""
         self.parameters = parameters
     
+    def calculate_volatility_from_strike(self, strike: float) -> float:
+        """
+        Calculate wing model volatility for given strike price
+        
+        Args:
+            strike: strike price
+            
+        Returns:
+            wing model volatility
+        """
+        # Convert strike to log forward moneyness
+        k = np.log(strike / self.parameters.atm)
+        return self.calculate_volatility(k)
+    
+    def get_moneyness_ranges(self) -> dict:
+        """
+        Get the different moneyness ranges defined by the wing model
+        
+        Returns:
+            dict: Dictionary containing the moneyness boundaries for each region
+        """
+        params = self.parameters
+        
+        return {
+            'far_left_tail': {'min': float('-inf'), 'max': params.dc * (1 + params.dsm)},
+            'left_smoothing': {'min': params.dc * (1 + params.dsm), 'max': params.dc},
+            'left_wing': {'min': params.dc, 'max': 0.0},
+            'right_wing': {'min': 0.0, 'max': params.uc},
+            'right_smoothing': {'min': params.uc, 'max': params.uc * (1 + params.usm)},
+            'far_right_tail': {'min': params.uc * (1 + params.usm), 'max': float('inf')},
+            'full_range': {'min': params.dc * (1 + params.dsm), 'max': params.uc * (1 + params.usm)}
+        }
+    
+    def get_strike_ranges(self) -> dict:
+        """
+        Calculate equivalent strike ranges from moneyness ranges
+        
+        Returns:
+            dict: Dictionary containing strike boundaries for each region
+        """
+        moneyness_ranges = self.get_moneyness_ranges()
+        atm = self.parameters.atm
+        
+        strike_ranges = {}
+        for region, bounds in moneyness_ranges.items():
+            if bounds['min'] == float('-inf'):
+                min_strike = 0.0
+            else:
+                min_strike = atm * np.exp(bounds['min'])
+                
+            if bounds['max'] == float('inf'):
+                max_strike = float('inf')
+            else:
+                max_strike = atm * np.exp(bounds['max'])
+                
+            strike_ranges[region] = {
+                'min': min_strike,
+                'max': max_strike
+            }
+        
+        return strike_ranges
+    
     def calculate_volatility(self, k: float) -> float:
         """
         Calculate wing model volatility for given log forward moneyness

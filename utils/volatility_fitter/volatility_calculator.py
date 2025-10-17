@@ -5,10 +5,13 @@ This module provides functions to calculate implied volatilities from option pri
 and perform synthetic arbitrage checks.
 """
 
+from datetime import datetime
 import polars as pl
 import numpy as np
 from typing import Tuple
+from utils.market_data.deribit_md_manager import DeribitMDManager
 from utils.pricer.pricer_helper import find_vol
+from utils.pricer.black76_option_pricer import Black76OptionPricer
 
 
 def calculate_bid_ask_volatilities(
@@ -223,3 +226,71 @@ def get_volatility_statistics(df: pl.DataFrame) -> dict:
     stats['num_strikes'] = len(df)
     
     return stats
+
+
+def add_vega_calculations(df: pl.DataFrame) -> pl.DataFrame:
+    """
+    Add vega calculations to a DataFrame with volatility data.
+    
+    Args:
+        df: DataFrame with columns: F, strike, tau, r, midVola
+        
+    Returns:
+        DataFrame with additional 'vega' column
+    """
+    
+    return df.with_columns([
+        # Calculate vega using mid volatility    
+        pl.struct(['F', 'strike', 'tau', 'r', 'midVola']).map_elements(
+            lambda row: Black76OptionPricer(
+                F=row['F'], 
+                K=row['strike'], 
+                T=row['tau'], 
+                r=row['r'], 
+                sigma=row['midVola'] / 100  # Convert percentage to decimal
+            ).vega()/100,
+            return_dtype=pl.Float64
+        ).round(2).alias('vega')
+    ])
+
+
+def process_volatility_with_greeks(df_with_vola: pl.DataFrame) -> pl.DataFrame:
+    """
+    Process DataFrame with volatility data by adding summary columns and Greeks.
+    
+    This is a convenience function that combines add_volatility_summary_columns 
+    and add_vega_calculations.
+    
+    Args:
+        df_with_vola: DataFrame with volatility data
+        
+    Returns:
+        DataFrame with summary volatility columns and vega calculations
+    """
+    # Add summary volatility columns first
+    df_with_summary = add_volatility_summary_columns(df_with_vola)
+    
+    # Then add vega calculations
+    return add_vega_calculations(df_with_summary)
+
+
+def get_option_chains(df_snapshot_md: pl.DataFrame, expiry: str, snapshot_time: datetime) -> pl.DataFrame:
+    """
+    Retrieves the option chain data for a given expiry and snapshot time from a snapshot market data DataFrame.
+
+    Args:
+        df_snapshot_md (pl.DataFrame): The snapshot market data containing option information.
+        expiry (str): The expiry date of the options to filter.
+        snapshot_time (datetime): The timestamp of the market data snapshot.
+
+    Returns:
+        pl.DataFrame: A DataFrame containing the filtered and processed option chain data.
+    """
+    if expiry not in df_snapshot_md['expiry'].unique():
+        raise Exception(f"{expiry} is not in the snapshot_md")
+    return DeribitMDManager.get_option_chain(df_snapshot_md.with_columns(
+        is_call = pl.col('option_type') == 'C',
+        is_put = pl.col('option_type') == 'P',
+        bid_price_fut = pl.col('F'),
+        ask_price_fut = pl.col('F'),
+    ), expiry, snapshot_time)
