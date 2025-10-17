@@ -9,7 +9,7 @@ then behaves exactly like the standard DeribitMDManager.
 import numpy as np
 import polars as pl
 
-from config_loader import Config
+from config.config_loader import Config
 
 from .orderbook_helper import get_volume_targeted_price
 from .deribit_md_manager import DeribitMDManager

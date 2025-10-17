@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from utils.base_offset_fitter.maths import convert_paramter_into_rate
 from utils.market_data.deribit_md_manager import DeribitMDManager
 from utils.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
-from config_loader import Config
+from config.config_loader import Config
 
 
 class Fitter(ABC):

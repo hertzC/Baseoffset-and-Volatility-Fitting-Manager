@@ -9,7 +9,7 @@ from utils.base_offset_fitter import Result
 from utils.base_offset_fitter.fitter import Fitter
 from utils.market_data.deribit_md_manager import DeribitMDManager
 from utils.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
-from config_loader import Config
+from config.config_loader import Config
 import statsmodels.api as sm
 
 

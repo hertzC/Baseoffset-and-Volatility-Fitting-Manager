@@ -12,7 +12,7 @@ from utils.base_offset_fitter.fitter import Fitter
 from utils.market_data.deribit_md_manager import DeribitMDManager
 from utils.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
 from utils.base_offset_fitter.maths import convert_paramter_into_rate
-from config_loader import Config
+from config.config_loader import Config
 from scipy.optimize import minimize
 
 

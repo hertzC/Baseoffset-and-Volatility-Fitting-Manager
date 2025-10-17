@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """
-Configuration Loader for Bitcoin Options Analysis
+Universal Configuration Loader
 
 This module provides utilities to load and manage configuration from YAML files.
+Supports multiple configuration files for different components:
+- base_offset_config.yaml: Put-call parity and base offset analysis
+- volatility_config.yaml: Volatility model fitting and calibration
+
 All configuration variables used throughout the project are centralized here.
 """
 
 import yaml
 import os
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from pathlib import Path
 
 class ConfigurationError(Exception):
@@ -23,14 +27,24 @@ class Config:
     Loads configuration from YAML files and provides easy access to all settings.
     """
     
-    def __init__(self, config_path: str = "config.yaml"):
+    def __init__(self, config_path: Union[str, Path] = None, config_type: str = "base_offset"):
         """
         Initialize configuration from YAML file.
         
         Args:
-            config_path: Path to the configuration YAML file
+            config_path: Path to the configuration YAML file. If None, uses default based on config_type
+            config_type: Type of configuration ("base_offset" or "volatility")
         """
-        self.config_path = config_path
+        # Set default config path based on type if not provided
+        if config_path is None:
+            config_dir = Path(__file__).parent
+            if config_type == "volatility":
+                config_path = config_dir / "volatility_config.yaml"
+            else:  # default to base_offset
+                config_path = config_dir / "base_offset_config.yaml"
+        
+        self.config_path = str(config_path)
+        self.config_type = config_type
         self._config = self._load_config()
         self._validate_config()
     
@@ -54,7 +68,25 @@ class Config:
             raise ConfigurationError(f"Error loading configuration: {e}")
     
     def _validate_config(self):
-        """Validate configuration structure and required fields."""
+        """Validate configuration structure and required fields based on config type."""
+        if self.config_type == "volatility":
+            self._validate_volatility_config()
+        else:  # base_offset
+            self._validate_base_offset_config()
+        
+        # Common validation for data section
+        if 'data' in self._config:
+            data_config = self._config['data']
+            if 'date_str' in data_config:
+                # Validate date format
+                date_str = data_config['date_str']
+                try:
+                    datetime.strptime(date_str, '%Y%m%d')
+                except ValueError:
+                    raise ConfigurationError(f"Invalid date format in data.date_str: {date_str}. Expected YYYYMMDD.")
+    
+    def _validate_base_offset_config(self):
+        """Validate base offset configuration structure."""
         required_sections = ['data', 'market_data', 'analysis', 'fitting', 'results']
         
         for section in required_sections:
@@ -65,13 +97,19 @@ class Config:
         data_config = self._config['data']
         if 'date_str' not in data_config:
             raise ConfigurationError("Missing required field: data.date_str")
+    
+    def _validate_volatility_config(self):
+        """Validate volatility configuration structure."""
+        required_sections = ['data', 'models', 'calibration']
         
-        # Validate date format
-        date_str = data_config['date_str']
-        try:
-            datetime.strptime(date_str, '%Y%m%d')
-        except ValueError:
-            raise ConfigurationError(f"Invalid date format in data.date_str: {date_str}. Expected YYYYMMDD.")
+        for section in required_sections:
+            if section not in self._config:
+                raise ConfigurationError(f"Missing required configuration section: {section}")
+        
+        # Validate models section
+        models_config = self._config['models']
+        if 'wing_model' not in models_config and 'time_adjusted_wing_model' not in models_config:
+            raise ConfigurationError("At least one model (wing_model or time_adjusted_wing_model) must be configured")
     
     def get(self, key_path: str, default: Any = None) -> Any:
         """
@@ -268,26 +306,84 @@ class Config:
         """Return configuration as dictionary."""
         return self._config.copy()
     
+    # Convenience properties for volatility configuration
+    
+    def get_model_config(self, model_name: str) -> Dict[str, Any]:
+        """Get configuration for a specific model."""
+        return self.get(f'models.{model_name}', {})
+    
+    def get_initial_params(self, model_name: str) -> Dict[str, float]:
+        """Get initial parameters for a model."""
+        return self.get(f'models.{model_name}.initial_params', {})
+    
+    def get_parameter_bounds(self, model_name: str) -> list:
+        """Get parameter bounds for a model as list of tuples for optimization."""
+        bounds_dict = self.get(f'models.{model_name}.bounds', {})
+        
+        if isinstance(bounds_dict, list):
+            # Handle list format (legacy)
+            return [tuple(float(x) for x in bounds) for bounds in bounds_dict]
+        elif isinstance(bounds_dict, dict):
+            # Handle dictionary format - convert to ordered list of tuples for the model
+            param_order = ['vr', 'sr', 'pc', 'cc', 'dc', 'uc', 'dsm', 'usm']
+            bounds_list = []
+            for param in param_order:
+                if param in bounds_dict:
+                    bounds_list.append(tuple(float(x) for x in bounds_dict[param]))
+            return bounds_list
+        else:
+            return []
+    
+    def get_calibration_config(self) -> Dict[str, Any]:
+        """Get calibration configuration."""
+        return self.get('calibration', {})
+    
+    def get_validation_config(self) -> Dict[str, Any]:
+        """Get validation configuration.""" 
+        return self.get('validation', {})
+    
+    @property
+    def max_rmse_threshold(self) -> float:
+        """Get maximum acceptable RMSE for calibration."""
+        return self.get('validation.quality.max_rmse', 0.1)
+    
+    @property
+    def calibration_method(self) -> str:
+        """Get calibration optimization method."""
+        return self.get('calibration.unified_calibrator.method', 'SLSQP')
+    
+    @property
+    def calibration_tolerance(self) -> float:
+        """Get calibration tolerance."""
+        return self.get('calibration.unified_calibrator.tolerance', 1e-10)
+    
+    @property
+    def max_calibration_iterations(self) -> int:
+        """Get maximum calibration iterations."""
+        return self.get('calibration.unified_calibrator.max_iterations', 1000)
+    
     def __repr__(self) -> str:
-        """String representation of configuration."""
-        return f"Config(config_path='{self.config_path}', date='{self.date_str}')"
+        """String representation of configuration.""" 
+        date_info = f", date='{self.date_str}'" if 'data' in self._config and 'date_str' in self._config['data'] else ""
+        return f"Config(type='{self.config_type}', config_path='{self.config_path}'{date_info})"
 
 
 # Global configuration instance
 _config_instance: Optional[Config] = None
 
-def load_config(config_path: str = "config.yaml") -> Config:
+def load_config(config_path: Union[str, Path] = None, config_type: str = "base_offset") -> Config:
     """
     Load global configuration instance.
     
     Args:
-        config_path: Path to configuration file
+        config_path: Path to configuration file. If None, uses default based on config_type
+        config_type: Type of configuration ("base_offset" or "volatility")
         
     Returns:
         Global configuration instance
     """
     global _config_instance
-    _config_instance = Config(config_path)
+    _config_instance = Config(config_path, config_type)
     return _config_instance
 
 def get_config() -> Config:
@@ -305,14 +401,24 @@ def get_config() -> Config:
         raise ConfigurationError("Configuration not loaded. Call load_config() first.")
     return _config_instance
 
-def reload_config(config_path: str = "config.yaml") -> Config:
+def reload_config(config_path: Union[str, Path] = None, config_type: str = "base_offset") -> Config:
     """
     Reload global configuration instance.
     
     Args:
-        config_path: Path to configuration file
+        config_path: Path to configuration file. If None, uses default based on config_type
+        config_type: Type of configuration ("base_offset" or "volatility")
         
     Returns:
         Reloaded configuration instance
     """
-    return load_config(config_path)
+    return load_config(config_path, config_type)
+
+# Convenience functions for specific config types
+def load_base_offset_config(config_path: Union[str, Path] = None) -> Config:
+    """Load base offset configuration."""
+    return load_config(config_path, "base_offset")
+
+def load_volatility_config(config_path: Union[str, Path] = None) -> Config:
+    """Load volatility configuration."""
+    return load_config(config_path, "volatility")

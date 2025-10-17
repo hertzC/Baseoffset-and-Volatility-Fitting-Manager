@@ -29,8 +29,8 @@ from .wing_model import WingModel, WingModelParameters, create_wing_model_from_r
 
 # Time-Adjusted Wing Model modules  
 from .time_adjusted_wing_model import (
-    TimeAdjustedWingModel, 
-    TimeAdjustedWingModelParameters
+    TimeAdjustedWingModel,
+    create_time_adjusted_wing_model_from_result
 )
 
 __all__ = [
@@ -57,5 +57,5 @@ __all__ = [
     
     # Time-Adjusted Wing Model
     'TimeAdjustedWingModel',
-    'TimeAdjustedWingModelParameters'
+    'create_time_adjusted_wing_model_from_result'
 ]

@@ -20,7 +20,7 @@ from utils.market_data.deribit_md_manager import DeribitMDManager
 from utils.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
 from utils.base_offset_fitter.weight_least_square_regressor import WLSRegressor
 from utils.base_offset_fitter.nonlinear_minimization import NonlinearMinimization
-from config_loader import Config, load_config
+from config.config_loader import Config, load_config
 
 
 class TestSampleDataGenerator:
@@ -211,7 +211,7 @@ class TestSyntheticCreation(unittest.TestCase):
         """Set up test fixtures."""
         # Load configuration
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        config_path = os.path.join(project_root, 'config.yaml')
+        config_path = os.path.join(project_root, 'config', 'base_offset_config.yaml')
         self.config = Config(config_path)
         
         # Create mock symbol manager with sample data
@@ -305,7 +305,7 @@ class TestWLSRegression(unittest.TestCase):
         """Set up test fixtures."""
         # Load configuration
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        config_path = os.path.join(project_root, 'config.yaml')
+        config_path = os.path.join(project_root, 'config', 'base_offset_config.yaml')
         self.config = Config(config_path)
         
         # Use realistic synthetic data based on exact put-call parity relationship
@@ -383,7 +383,7 @@ class TestNonlinearMinimization(unittest.TestCase):
         """Set up test fixtures."""
         # Load configuration
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        config_path = os.path.join(project_root, 'config.yaml')
+        config_path = os.path.join(project_root, 'config', 'base_offset_config.yaml')
         self.config = Config(config_path)
         
         # Use same realistic synthetic data as WLS tests
@@ -483,7 +483,7 @@ class TestRegressionValues(unittest.TestCase):
         """Set up fixed test data for regression testing."""
         # Load configuration
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        config_path = os.path.join(project_root, 'config.yaml')
+        config_path = os.path.join(project_root, 'config', 'base_offset_config.yaml')
         self.config = Config(config_path)
         
         # Fixed synthetic data for consistent testing with exact put-call parity
