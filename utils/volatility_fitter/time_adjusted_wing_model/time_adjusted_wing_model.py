@@ -65,6 +65,66 @@ class TimeAdjustedWingModel(BaseVolatilityModel):
         # Final moneyness as defined in the document
         moneyness = -n_term * d1
         return moneyness
+
+    def calculate_moneyness_from_delta(self, delta: float, option_type: str = 'call', 
+                                     time_to_expiry: float = None, atm_vol: float = None) -> float:
+        """
+        Calculate moneyness based on option delta.
+        
+        This function converts option delta to the model-specific moneyness by:
+        1. Converting delta to d1 using the inverse normal CDF
+        2. Applying the model's normalization term
+        
+        Args:
+            delta: Option delta value (0-1 for calls, -1-0 for puts)
+            option_type: 'call' or 'put' to handle delta sign convention
+            time_to_expiry: Time to expiry in years (uses model params if None)
+            atm_vol: At-the-money volatility (uses model params if None)
+            
+        Returns:
+            The calculated moneyness for the model
+            
+        Raises:
+            ValueError: If delta is outside valid range or option_type is invalid
+        """
+        from scipy.stats import norm
+        
+        # Use model parameters if not provided
+        if time_to_expiry is None:
+            time_to_expiry = self.parameters.time_to_expiry
+        if atm_vol is None:
+            atm_vol = self.parameters.vr
+        
+        # Ensure time to expiry is not zero
+        if time_to_expiry <= 1e-9:
+            return 0.0
+            
+        # Validate option type
+        if option_type.lower() not in ['call', 'put']:
+            raise ValueError("option_type must be 'call' or 'put'")
+            
+        # Validate delta ranges
+        if option_type.lower() == 'call':
+            if not (0 <= delta <= 1):
+                raise ValueError(f"Call delta must be between 0 and 1, got {delta}")
+            # For calls: delta = N(d1), so d1 = N^(-1)(delta)
+            d1 = norm.ppf(delta)
+        else:  # put
+            if not (-1 <= delta <= 0):
+                raise ValueError(f"Put delta must be between -1 and 0, got {delta}")
+            # For puts: delta = -N(-d1) = N(d1) - 1, so N(d1) = delta + 1
+            delta_adjusted = delta + 1
+            if delta_adjusted <= 0 or delta_adjusted >= 1:
+                raise ValueError(f"Adjusted put delta out of range: {delta_adjusted}")
+            d1 = norm.ppf(delta_adjusted)
+        
+        # Apply normalization term
+        n_term = self.get_normalization_term(time_to_expiry)
+        
+        # Calculate moneyness: moneyness = -n_term * d1
+        moneyness = -n_term * d1
+        
+        return moneyness
     
     def calculate_volatility_from_strike(self, strike_price: float) -> float:
         """
@@ -207,10 +267,10 @@ class TimeAdjustedWingModel(BaseVolatilityModel):
         Returns:
             dict: Dictionary containing strike boundaries for each region
         """
-        moneyness_ranges = {'downSmoothing': self.parameters.dc * (1+self.parameters.dsm),  # down_cutoff->dc, down_smoothing->dsm
-                            'downCutOff': self.parameters.dc,  # down_cutoff->dc
-                            'upCutOff': self.parameters.uc,  # up_cutoff->uc
-                            'upSmoothing': self.parameters.uc * (1+self.parameters.usm)}  # up_cutoff->uc, up_smoothing->usm
+        moneyness_ranges = {'dSm': self.parameters.dc * (1+self.parameters.dsm),  # down_cutoff->dc, down_smoothing->dsm
+                            'dCo': self.parameters.dc,  # down_cutoff->dc
+                            'uCo': self.parameters.uc,  # up_cutoff->uc
+                            'uSm': self.parameters.uc * (1+self.parameters.usm)}  # up_cutoff->uc, up_smoothing->usm
         strike_ranges = {}
         for region, moenyness in moneyness_ranges.items():
             # For time-adjusted wing model, we need to solve for strike from moneyness

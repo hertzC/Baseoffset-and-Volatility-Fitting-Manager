@@ -228,32 +228,6 @@ def get_volatility_statistics(df: pl.DataFrame) -> dict:
     return stats
 
 
-def add_vega_calculations(df: pl.DataFrame) -> pl.DataFrame:
-    """
-    Add vega calculations to a DataFrame with volatility data.
-    
-    Args:
-        df: DataFrame with columns: F, strike, tau, r, midVola
-        
-    Returns:
-        DataFrame with additional 'vega' column
-    """
-    
-    return df.with_columns([
-        # Calculate vega using mid volatility    
-        pl.struct(['F', 'strike', 'tau', 'r', 'midVola']).map_elements(
-            lambda row: Black76OptionPricer(
-                F=row['F'], 
-                K=row['strike'], 
-                T=row['tau'], 
-                r=row['r'], 
-                sigma=row['midVola'] / 100  # Convert percentage to decimal
-            ).vega()/100,
-            return_dtype=pl.Float64
-        ).round(2).alias('vega')
-    ])
-
-
 def process_volatility_with_greeks(df_with_vola: pl.DataFrame) -> pl.DataFrame:
     """
     Process DataFrame with volatility data by adding summary columns and Greeks.
@@ -270,8 +244,18 @@ def process_volatility_with_greeks(df_with_vola: pl.DataFrame) -> pl.DataFrame:
     # Add summary volatility columns first
     df_with_summary = add_volatility_summary_columns(df_with_vola)
     
-    # Then add vega calculations
-    return add_vega_calculations(df_with_summary)
+    # Then add vega and delta calculations
+    return df_with_summary.with_columns([
+        # Calculate vega using mid volatility
+        pl.struct(['F', 'strike', 'tau', 'r', 'midVola']).map_elements(
+            lambda row: Black76OptionPricer(F=row['F'], K=row['strike'], T=row['tau'], r=row['r'], 
+                                            sigma=row['midVola'] / 100).vega()/100,
+            return_dtype=pl.Float64).round(2).alias('vega'),
+        pl.struct(['F', 'strike', 'tau', 'r', 'midVola']).map_elements(
+            lambda row: Black76OptionPricer(F=row['F'], K=row['strike'], T=row['tau'], r=row['r'], 
+                                            sigma=row['midVola'] / 100).call_delta(),
+            return_dtype=pl.Float64).round(2).alias('call_delta')
+    ])
 
 
 def get_option_chains(df_snapshot_md: pl.DataFrame, expiry: str, snapshot_time: datetime) -> pl.DataFrame:

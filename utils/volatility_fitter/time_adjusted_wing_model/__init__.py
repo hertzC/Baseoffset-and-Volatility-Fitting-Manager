@@ -9,7 +9,7 @@ from .time_adjusted_wing_model import TimeAdjustedWingModel
 from ..wing_model.wing_model_parameters import WingModelParameters, create_wing_model_from_result
 
 # Create alias for backward compatibility
-def create_time_adjusted_wing_model_from_result(result, forward_price: float, ref_price: float, time_to_expiry: float):
+def create_time_adjusted_wing_model_from_result(result, forward_price: float, ref_price: float, time_to_expiry: float) -> WingModelParameters:
     """
     Create WingModelParameters for TimeAdjustedWingModel from optimization result
     
@@ -27,12 +27,12 @@ def create_time_adjusted_wing_model_from_result(result, forward_price: float, re
     return WingModelParameters(
         vr=result[0],      # atm_vol -> vr
         sr=result[1],      # slope -> sr
-        pc=result[3],      # put_curve -> pc  
-        cc=result[2],      # call_curve -> cc
-        dc=result[5],      # down_cutoff -> dc
-        uc=result[4],      # up_cutoff -> uc
-        dsm=result[7],     # down_smoothing -> dsm
-        usm=result[6],     # up_smoothing -> usm
+        pc=result[2],      # put_curve -> pc  
+        cc=result[3],      # call_curve -> cc
+        dc=result[4],      # down_cutoff -> dc
+        uc=result[5],      # up_cutoff -> uc
+        dsm=result[6],     # down_smoothing -> dsm
+        usm=result[7],     # up_smoothing -> usm
         forward_price=forward_price,
         ref_price=ref_price,
         time_to_expiry=time_to_expiry

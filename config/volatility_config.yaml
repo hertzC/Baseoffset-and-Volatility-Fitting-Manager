@@ -28,18 +28,13 @@ data:
 
 # Model Configuration
 models:
+  # Model execution toggles
+  enabled_models:
+    wing_model: false              # Enable/disable Traditional Wing Model
+    time_adjusted_wing_model: true # Enable/disable Time-Adjusted Wing Model
+  
   # Wing Model settings
   wing_model:
-    # Default initial parameters
-    initial_params:
-      vr: 0.7      # volatility reference (ATM vol)
-      sr: 0.01     # slope reference
-      pc: 1.0      # put curvature
-      cc: 1.0      # call curvature
-      dc: -0.2     # down cutoff
-      uc: 0.2      # up cutoff
-      dsm: 0.5     # down smoothing range
-      usm: 0.5     # up smoothing range
     
     # Parameter bounds for calibration
     bounds:
@@ -56,18 +51,7 @@ models:
   time_adjusted_wing_model:
     # Use normalization term
     use_norm_term: true
-    
-    # Same parameter structure as wing_model
-    initial_params:
-      vr: 0.7      # ATM volatility (was atm_vol)
-      sr: 0.01     # slope (was slope)
-      cc: 1.0      # call curvature (was call_curve)
-      pc: 1.0      # put curvature (was put_curve)
-      uc: 0.2      # up cutoff (was up_cutoff)
-      dc: -0.2     # down cutoff (was down_cutoff)
-      usm: 0.5     # up smoothing (was up_smoothing)
-      dsm: 0.5     # down smoothing (was down_smoothing)
-    
+        
     # Same bounds as wing_model
     bounds:
       vr: [0.05, 5.0]

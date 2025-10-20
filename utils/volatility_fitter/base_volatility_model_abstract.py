@@ -15,8 +15,8 @@ class BaseVolatilityModel(ABC):
     """Abstract base class for all volatility models"""
     
     # Class constants that can be overridden by subclasses
-    ARBITRAGE_LOWER_BOUND = 0.5
-    ARBITRAGE_UPPER_BOUND = 2.0
+    ARBITRAGE_LOWER_BOUND = 1.0
+    ARBITRAGE_UPPER_BOUND = 1.0
     
     def __init__(self, parameters: Any):
         """

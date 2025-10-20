@@ -362,6 +362,29 @@ class Config:
         """Get maximum calibration iterations."""
         return self.get('calibration.unified_calibrator.max_iterations', 1000)
     
+    def is_model_enabled(self, model_name: str) -> bool:
+        """Check if a specific model is enabled."""
+        return self.get(f'models.enabled_models.{model_name}', True)
+    
+    @property
+    def wing_model_enabled(self) -> bool:
+        """Check if Traditional Wing Model is enabled."""
+        return self.is_model_enabled('wing_model')
+    
+    @property
+    def time_adjusted_wing_model_enabled(self) -> bool:
+        """Check if Time-Adjusted Wing Model is enabled."""
+        return self.is_model_enabled('time_adjusted_wing_model')
+    
+    def get_enabled_models(self) -> list:
+        """Get list of enabled model names."""
+        enabled_models = []
+        models_config = self.get('models.enabled_models', {})
+        for model_name, enabled in models_config.items():
+            if enabled:
+                enabled_models.append(model_name)
+        return enabled_models
+    
     def __repr__(self) -> str:
         """String representation of configuration.""" 
         date_info = f", date='{self.date_str}'" if 'data' in self._config and 'date_str' in self._config['data'] else ""
