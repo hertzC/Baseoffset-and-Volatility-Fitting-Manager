@@ -200,7 +200,24 @@ class TestOrderbookDeribitMDManager(unittest.TestCase):
     def setUp(self):
         if OrderbookDeribitMDManager is None:
             self.skipTest("OrderbookDeribitMDManager not available")
-        self.orderbook_manager = OrderbookDeribitMDManager()
+        
+        # Create test config
+        from config.config_loader import Config
+        self.config_loader = Config()
+        
+        # Create sample orderbook data with required columns
+        sample_data = [
+            {'symbol': 'BTC-29FEB24-60000-C', 'timestamp': datetime.now(), 
+             'asks[0].price': 1020, 'asks[0].amount': 15,
+             'bids[0].price': 1000, 'bids[0].amount': 10}
+        ]
+        self.sample_df = pl.DataFrame(sample_data).lazy()
+        
+        self.orderbook_manager = OrderbookDeribitMDManager(
+            df_orderbook=self.sample_df,
+            date_str="20240229", 
+            config_loader=self.config_loader
+        )
     
     def test_initialization(self):
         """Test OrderbookDeribitMDManager initialization"""
@@ -211,7 +228,8 @@ class TestOrderbookDeribitMDManager(unittest.TestCase):
         # Create sample orderbook data
         data = [
             {'symbol': 'BTC-29FEB24-60000-C', 'timestamp': datetime.now(), 
-             'bid_price': 1000, 'ask_price': 1020, 'bid_size': 10, 'ask_size': 15}
+             'asks[0].price': 1020, 'asks[0].amount': 15,
+             'bids[0].price': 1000, 'bids[0].amount': 10}
         ]
         df = pl.DataFrame(data)
         
@@ -227,7 +245,23 @@ class TestWLSRegressor(unittest.TestCase):
     def setUp(self):
         if WLSRegressor is None:
             self.skipTest("WLSRegressor not available")
-        self.wls_regressor = WLSRegressor()
+        
+        # Create test config and symbol manager
+        from config.config_loader import Config
+        self.config_loader = Config()
+        
+        # Create sample market data for symbol manager
+        sample_data = [
+            {'symbol': 'BTC-29FEB24-60000-C', 'timestamp': datetime.now(), 
+             'bid_price': 1000, 'ask_price': 1020, 'bid_size': 10, 'ask_size': 15}
+        ]
+        sample_df = pl.DataFrame(sample_data).lazy()
+        
+        self.symbol_manager = DeribitMDManager(sample_df, "20240229")
+        self.wls_regressor = WLSRegressor(
+            symbol_manager=self.symbol_manager,
+            config_loader=self.config_loader
+        )
         
         # Create synthetic option data for regression
         np.random.seed(42)
@@ -260,7 +294,12 @@ class TestWLSRegressor(unittest.TestCase):
         """Test WLS regression fitting"""
         if hasattr(self.wls_regressor, 'fit'):
             try:
-                result = self.wls_regressor.fit(self.synthetic_data)
+                # Add required expiry parameter
+                result = self.wls_regressor.fit(
+                    self.synthetic_data, 
+                    expiry=datetime(2024, 2, 29),
+                    timestamp=datetime.now()
+                )
                 self.assertIsInstance(result, dict)
                 self.assertIn('coef', result)
                 self.assertIn('const', result)
@@ -276,12 +315,28 @@ class TestWLSRegressor(unittest.TestCase):
 
 
 class TestNonlinearMinimization(unittest.TestCase):
-    """Test Nonlinear Minimization functionality"""
+    """Test Nonlinear Minimization"""
     
     def setUp(self):
         if NonlinearMinimization is None:
             self.skipTest("NonlinearMinimization not available")
-        self.nonlinear_minimizer = NonlinearMinimization()
+        
+        # Create test config and symbol manager
+        from config.config_loader import Config
+        self.config_loader = Config()
+        
+        # Create sample market data for symbol manager
+        sample_data = [
+            {'symbol': 'BTC-29FEB24-60000-C', 'timestamp': datetime.now(), 
+             'bid_price': 1000, 'ask_price': 1020, 'bid_size': 10, 'ask_size': 15}
+        ]
+        sample_df = pl.DataFrame(sample_data).lazy()
+        
+        self.symbol_manager = DeribitMDManager(sample_df, "20240229")
+        self.nonlinear_minimizer = NonlinearMinimization(
+            symbol_manager=self.symbol_manager,
+            config_loader=self.config_loader
+        )
         
         # Create synthetic data similar to WLS test
         np.random.seed(42)
@@ -320,7 +375,9 @@ class TestNonlinearMinimization(unittest.TestCase):
                 result = self.nonlinear_minimizer.fit(
                     self.synthetic_data, 
                     self.initial_const, 
-                    self.initial_coef
+                    self.initial_coef,
+                    expiry=datetime(2024, 2, 29),
+                    timestamp=datetime.now()
                 )
                 self.assertIsInstance(result, dict)
                 self.assertIn('const', result)
@@ -431,12 +488,30 @@ class TestIntegrationWorkflow(unittest.TestCase):
         # Check if all components are available
         if any(comp is None for comp in [DeribitMDManager, WLSRegressor, NonlinearMinimization, PlotlyManager]):
             self.skipTest("Not all components available for integration testing")
-            
+        
+        # Create test config
+        from config.config_loader import Config
+        self.config_loader = Config()
+        
+        # Create sample data with required columns first
+        sample_data = [
+            {'symbol': 'BTC-29FEB24-60000-C', 'timestamp': datetime.now(), 
+             'bid_price': 1000, 'ask_price': 1020, 'bid_size': 10, 'ask_size': 15},
+            {'symbol': 'BTC-29FEB24-60000-P', 'timestamp': datetime.now(), 
+             'bid_price': 800, 'ask_price': 820, 'bid_size': 8, 'ask_size': 12}
+        ]
+        sample_lazy_df = pl.DataFrame(sample_data).lazy()
+        
         # Initialize all components with proper parameters
-        sample_lazy_df = pl.DataFrame().lazy()  # Empty LazyFrame for testing
         self.md_manager = DeribitMDManager(sample_lazy_df, "20240229")
-        self.wls_regressor = WLSRegressor()
-        self.nonlinear_minimizer = NonlinearMinimization()
+        self.wls_regressor = WLSRegressor(
+            symbol_manager=self.md_manager,
+            config_loader=self.config_loader
+        )
+        self.nonlinear_minimizer = NonlinearMinimization(
+            symbol_manager=self.md_manager,
+            config_loader=self.config_loader
+        )
         self.plotly_manager = PlotlyManager("20240229", ["29FEB24"])
         
         # Create comprehensive sample data
@@ -517,7 +592,11 @@ class TestIntegrationWorkflow(unittest.TestCase):
             
             # Step 3: WLS regression
             if hasattr(self.wls_regressor, 'fit') and not synthetic_data.is_empty():
-                wls_result = self.wls_regressor.fit(synthetic_data)
+                wls_result = self.wls_regressor.fit(
+                    synthetic_data,
+                    expiry=datetime(2024, 2, 29),
+                    timestamp=datetime.now()
+                )
                 self.assertIsInstance(wls_result, dict)
             
             # Step 4: Constrained optimization (if WLS succeeded)
@@ -525,7 +604,9 @@ class TestIntegrationWorkflow(unittest.TestCase):
                 constrained_result = self.nonlinear_minimizer.fit(
                     synthetic_data,
                     wls_result.get('const', 0),
-                    wls_result.get('coef', 0)
+                    wls_result.get('coef', 0),
+                    expiry=datetime(2024, 2, 29),
+                    timestamp=datetime.now()
                 )
                 self.assertIsInstance(constrained_result, dict)
             

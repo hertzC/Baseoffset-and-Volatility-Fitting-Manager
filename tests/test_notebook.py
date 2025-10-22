@@ -158,13 +158,37 @@ class TestRegressionComponents:
     
     def test_wls_regressor_initialization(self):
         """Test WLS regressor initialization."""
-        wls = WLSRegressor()
+        # Create test config and symbol manager
+        from config.config_loader import Config
+        config_loader = Config()
+        
+        # Create sample market data for symbol manager
+        sample_data = [
+            {'symbol': 'BTC-29FEB24-60000-C', 'timestamp': datetime.now(), 
+             'bid_price': 1000, 'ask_price': 1020, 'bid_size': 10, 'ask_size': 15}
+        ]
+        sample_df = pl.DataFrame(sample_data).lazy()
+        symbol_manager = DeribitMDManager(sample_df, "20240229")
+        
+        wls = WLSRegressor(symbol_manager=symbol_manager, config_loader=config_loader)
         assert wls is not None
         assert hasattr(wls, 'fit')
         
     def test_wls_regressor_basic_functionality(self, sample_synthetic_data):
         """Test basic WLS regression functionality."""
-        wls = WLSRegressor()
+        # Create test config and symbol manager
+        from config.config_loader import Config
+        config_loader = Config()
+        
+        # Create sample market data for symbol manager
+        sample_data = [
+            {'symbol': 'BTC-29FEB24-60000-C', 'timestamp': datetime.now(), 
+             'bid_price': 1000, 'ask_price': 1020, 'bid_size': 10, 'ask_size': 15}
+        ]
+        sample_df = pl.DataFrame(sample_data).lazy()
+        symbol_manager = DeribitMDManager(sample_df, "20240229")
+        
+        wls = WLSRegressor(symbol_manager=symbol_manager, config_loader=config_loader)
         wls.set_printable(False)  # Suppress output during testing
         
         try:
@@ -185,13 +209,37 @@ class TestRegressionComponents:
     
     def test_nonlinear_minimizer_initialization(self):
         """Test nonlinear minimizer initialization."""
-        nlm = NonlinearMinimization()
+        # Create test config and symbol manager
+        from config.config_loader import Config
+        config_loader = Config()
+        
+        # Create sample market data for symbol manager
+        sample_data = [
+            {'symbol': 'BTC-29FEB24-60000-C', 'timestamp': datetime.now(), 
+             'bid_price': 1000, 'ask_price': 1020, 'bid_size': 10, 'ask_size': 15}
+        ]
+        sample_df = pl.DataFrame(sample_data).lazy()
+        symbol_manager = DeribitMDManager(sample_df, "20240229")
+        
+        nlm = NonlinearMinimization(symbol_manager=symbol_manager, config_loader=config_loader)
         assert nlm is not None
         assert hasattr(nlm, 'fit')
     
     def test_nonlinear_minimizer_basic_functionality(self, sample_synthetic_data):
         """Test basic nonlinear optimization functionality."""
-        nlm = NonlinearMinimization()
+        # Create test config and symbol manager
+        from config.config_loader import Config
+        config_loader = Config()
+        
+        # Create sample market data for symbol manager
+        sample_data = [
+            {'symbol': 'BTC-29FEB24-60000-C', 'timestamp': datetime.now(), 
+             'bid_price': 1000, 'ask_price': 1020, 'bid_size': 10, 'ask_size': 15}
+        ]
+        sample_df = pl.DataFrame(sample_data).lazy()
+        symbol_manager = DeribitMDManager(sample_df, "20240229")
+        
+        nlm = NonlinearMinimization(symbol_manager=symbol_manager, config_loader=config_loader)
         nlm.set_printable(False)  # Suppress output during testing
         
         try:

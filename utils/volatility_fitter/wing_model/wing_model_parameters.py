@@ -2,8 +2,8 @@
 WING_MODEL_PARAMETER_CONSTRAINTS = {
     'vr': {'min': 0.01, 'max': 5.0, 'description': 'volatility reference (1% to 500%)'},
     'sr': {'min': -3.0, 'max': 3.0, 'description': 'slope reference'},
-    'pc': {'min': 0.0, 'max': 10.0, 'description': 'put curvature (non-negative)'},
-    'cc': {'min': 0.0, 'max': 10.0, 'description': 'call curvature (non-negative)'},
+    'pc': {'min': 0.01, 'max': 10.0, 'description': 'put curvature (non-negative)'},
+    'cc': {'min': 0.01, 'max': 10.0, 'description': 'call curvature (non-negative)'},
     'dc': {'min': -5.0, 'max': -0.01, 'description': 'down cutoff (negative)'},
     'uc': {'min': 0.01, 'max': 5.0, 'description': 'up cutoff (positive)'},
     'dsm': {'min': 0.01, 'max': 10.0, 'description': 'down smoothing range'},

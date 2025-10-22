@@ -234,7 +234,7 @@ class Black76OptionPricer:
         put_price = self.put_price()
         return -self.T * put_price
     
-    def get_all_greeks(self, option_type='call'):
+    def    get_all_greeks(self, option_type='call'):
         """
         Get all Greeks for the specified option type.
         
