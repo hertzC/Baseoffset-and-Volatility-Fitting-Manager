@@ -177,6 +177,11 @@ class Config:
         return self.get('data.date_str')
     
     @property
+    def default_interest_rate(self) -> float:
+        """ Get the default interest rate """
+        return self.get('data.default_interest_rate', 0.0)
+
+    @property
     def use_orderbook_data(self) -> bool:
         """Get whether to use orderbook depth data."""
         return self.get('data.use_orderbook_data', False)
@@ -190,6 +195,11 @@ class Config:
     def conflation_period(self) -> str:
         """Get conflation period."""
         return self.get('market_data.conflation.period')
+    
+    @property
+    def tightening_volume_threshold(self) -> float:
+        """Get volume threshold for option spread tightening."""
+        return self.get('market_data.option_constraints.tightening_volume_threshold', 5.0)
     
     ##############################  VWAP ##########################################
     @property
@@ -214,7 +224,7 @@ class Config:
     ################################################################################
 
 
-    ##############################  Optimization ###################################
+    ############################## BO Optimization ###################################
     @property
     def use_constrained_optimization(self) -> bool:
         """Get whether to use constrained optimization."""

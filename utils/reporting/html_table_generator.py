@@ -47,7 +47,7 @@ def enrich_comparison_df(comparison_df):
     ]).sort('strike')
 
 
-def generate_price_comparison_table(comparison_df, table_width="70%", font_size="10px"):
+def generate_price_comparison_table(comparison_df, table_width="70%", font_size="10px", volume_threshold=None):
     """
     Generate HTML table for price comparison with styling
     
@@ -59,6 +59,7 @@ def generate_price_comparison_table(comparison_df, table_width="70%", font_size=
     Returns:
         str: Complete HTML content with CSS styling and table
     """
+    print("📝 Generating HTML price comparison table for the tightened bid/ask spread on call and put options..." + (f" (Volume Threshold: {volume_threshold})" if volume_threshold else ""))
     # Get spot price for display
     comparison_df = enrich_comparison_df(comparison_df)
     spot_price = comparison_df['S'][0]
@@ -99,20 +100,28 @@ def generate_price_comparison_table(comparison_df, table_width="70%", font_size=
     <thead>
     <tr>
         <th>Strike</th>
+        <th>Bid Size</th>
         <th colspan="2">Call Bid</th>
         <th colspan="2">Call Ask</th>
+        <th>Ask Size</th>
         <th colspan="2">Call Spread</th>
+        <th>Bid Size</th>
         <th colspan="2">Put Bid</th>
         <th colspan="2">Put Ask</th>
+        <th>Ask Size</th>
         <th colspan="2">Put Spread</th>
     </tr>
     <tr>
         <th></th>
+        <th></th>
         <th>Old</th><th>New</th>
         <th>Old</th><th>New</th>
+        <th></th>
+        <th>Old</th><th>New</th>
+        <th></th>
         <th>Old</th><th>New</th>
         <th>Old</th><th>New</th>
-        <th>Old</th><th>New</th>
+        <th></th>
         <th>Old</th><th>New</th>
     </tr>
     </thead>
@@ -124,16 +133,20 @@ def generate_price_comparison_table(comparison_df, table_width="70%", font_size=
         html_content += f"""
         <tr>
             <td>{row['strike']}</td>
+            <td>{row['bid_size']:.1f}</td>
             <td>{row['old_bid_price']:.4f}</td>
             <td>{format_price_change(row['old_bid_price'], row['bid_price'])}</td>
             <td>{row['old_ask_price']:.4f}</td>
             <td>{format_price_change(row['old_ask_price'], row['ask_price'])}</td>
+            <td>{row['ask_size']:.1f}</td>
             <td>{row['orig_call_spread']:.4f}</td>
             <td>{format_price_change(row['orig_call_spread'], row['final_call_spread'])}</td>
+            <td>{row['bid_size_P']:.1f}</td>
             <td>{row['old_bid_price_P']:.4f}</td>
             <td>{format_price_change(row['old_bid_price_P'], row['bid_price_P'])}</td>
             <td>{row['old_ask_price_P']:.4f}</td>
             <td>{format_price_change(row['old_ask_price_P'], row['ask_price_P'])}</td>
+            <td>{row['ask_size_P']:.1f}</td>
             <td>{row['orig_put_spread']:.4f}</td>
             <td>{format_price_change(row['orig_put_spread'], row['final_put_spread'])}</td>
         </tr>

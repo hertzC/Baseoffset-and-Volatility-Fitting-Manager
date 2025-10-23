@@ -92,6 +92,9 @@ class WingModelParameters:
     def __repr__(self) -> str:
         pairs = (f"{n}={v:.4f}" for n, v in zip(self.get_parameter_names(), self.get_fitted_vol_parameter()))
         return f"{self.__class__.__name__}(" + ", ".join(pairs) + ")"
+    
+    def to_dict(self) -> dict:
+        return {name: value for name, value in zip(self.get_parameter_names(), self.get_fitted_vol_parameter())}
 
 def create_wing_model_from_result(result: np.ndarray|list, forward_price: float, ref_price: float, time_to_expiry: float, vcr: float=1.0, scr: float=1.0, ssr: float=0.0):
     return WingModelParameters(

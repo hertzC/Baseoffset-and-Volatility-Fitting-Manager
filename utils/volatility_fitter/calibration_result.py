@@ -34,3 +34,11 @@ class CalibrationResult:
             f"  time_elapsed={self.time_elapsed:.6f} seconds\n"
             f")"
         )
+    
+    def to_dict(self) -> dict:
+        return {'method': self.optimization_method,
+                'success': self.success,
+                'error': self.error,
+                'message': self.message,
+                'time_elapsed': self.time_elapsed,
+                'num_evaluations': self.optimisation_result.nfev if self.optimisation_result else 0} | self.parameters.to_dict()

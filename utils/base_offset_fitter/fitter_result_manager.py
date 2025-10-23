@@ -41,6 +41,7 @@ class FitterResultManager:
             (pl.col('q') * 100).min().round(2).alias('q_min%'),
             (pl.col('q') * 100).max().round(2).alias('q_max%'),
             (pl.col('(r-q)*t') * 100).drop_nans().mean().round(2).alias('spread_%'),
+            (pl.col('(r-q)*t') * 100).drop_nans().diff().abs().max().round(2).alias('max_spread_%_change'),
             (pl.col('r-q') * 100).drop_nans().mean().round(2).alias('spread_%(pa)'),
             (pl.col('F-S')).drop_nans().mean().round(1).alias('BaseOffset_$'),
             (pl.col('F/S-1') * 100).drop_nans().mean().round(2).alias('Basis_%'),

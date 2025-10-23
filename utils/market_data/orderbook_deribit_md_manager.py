@@ -39,7 +39,7 @@ class OrderbookDeribitMDManager(DeribitMDManager):
             date_str: Date string in YYYYMMDD format
             level: Which orderbook level to use (0=best, 1=second best, etc.)
         """
-        super().__init__(df_orderbook, date_str)
+        super().__init__(df_orderbook, date_str, config_loader)
         self.num_of_level = config_loader.orderbook_level  
         self.future_min_tick = config_loader.future_min_tick_size
         self.price_widening_factor = config_loader.price_widening_factor

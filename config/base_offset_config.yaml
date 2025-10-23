@@ -14,6 +14,8 @@ data:
   # Only used when use_orderbook_data is true
   orderbook_level: 0
 
+  default_interest_rate: 0.08
+
 # Market Data Processing
 market_data:
   # Data conflation settings
@@ -26,6 +28,10 @@ market_data:
   
   # Price widening factor for spread tightening
   price_widening_factor: 0.00025
+
+  option_constraints:
+    # Volume threshold for option spread tightening
+    tightening_volume_threshold: 1.0
 
 # Analysis Configuration
 analysis:

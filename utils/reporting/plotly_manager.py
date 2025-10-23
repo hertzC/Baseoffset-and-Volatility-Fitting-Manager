@@ -13,353 +13,112 @@ import plotly.io as pio
 from IPython.display import HTML, display
 
 
+COLOR_MAP = ['#9467bd', '#ff7f0e', '#e377c2', '#bcbd22', '#17becf', '#1f77b4', '#2ca02c', '#8c564b', '#d62728', '#7f7f7f']
+
+
 class PlotlyManager:
     """Manager for creating interactive visualizations of options analytics results."""
     
     def __init__(self, date_str: str, future_expiries: list[str]):
-        """
-        Initialize visualization manager.
-        
-        Args:
-            date_str: Date string for plot titles
-            future_expiries: List of futures expiries for categorization
-        """
         self.date_str = date_str
         self.future_expiries = future_expiries
 
     def _safe_show(self, fig):
         """Safely display plotly figure inline within the notebook."""
-        try:            
-            # Set the renderer to ensure inline display
+        try:
             pio.renderers.default = "notebook"
-            
-            # Try to display inline using IPython display
             display(HTML(fig.to_html(include_plotlyjs='cdn')))
-            
-        except Exception as e:
-            # Fallback: try standard show (might work in some environments)
+        except:
             try:
                 fig.show()
             except:
-                # Final fallback - just indicate success
                 print("✅ Plot generated successfully (display may not be visible in text environment)")
-                # In a real Jupyter notebook, you would see the plot above this message
 
-    def is_fut_expiry(self, expiry: str) -> bool:
-        """Check if expiry corresponds to a futures contract."""
-        return expiry in self.future_expiries
-
-    def plot_regression_result(self, expiry: str, timestamp: str,
-                             df_option_synthetic: pl.DataFrame, fitted_result: dict, width: int = 675, height: int = 450):
-        """
-        Plot regression fit of put-call parity with error bars and formula.
-        
-        Args:
-            expiry: Option expiry
-            timestamp: Analysis timestamp
-            df_option_synthetic: Synthetic option data
-            fitted_result: Regression results dictionary
-        """
+    def plot_regression_result(self, expiry: str, timestamp: str, df: pl.DataFrame, fitted_result: dict, width: int = 675, height: int = 450):
         fig = make_subplots(specs=[[{"secondary_y": True}]])
-
-        # Add spot price reference line
-        S = df_option_synthetic['S'][0]
-        fig.add_vline(x=S, line_width=3, line_dash="dash", 
-                     line_color="green", name="Spot")
-        
-        # Calculate fitted line
-        y_pred = (df_option_synthetic['strike'].to_numpy() * fitted_result['coef'] + 
-                 fitted_result['const'])
-
-        # Add regression line with error bars
+        S = df['S'][0]
+        fig.add_vline(x=S, line_width=3, line_dash="dash", line_color="green", name="Spot")
+        y_pred = df['strike'].to_numpy() * fitted_result['coef'] + fitted_result['const']
         fig.add_trace(go.Scatter(
-            x=df_option_synthetic['strike'], 
-            y=y_pred, 
-            mode='lines+markers', 
-            name='P-C (Fitted)', 
-            line=dict(color='blue'),
-            error_y=dict(type='data', 
-                        array=df_option_synthetic['spread']/2, 
-                        visible=True, 
-                        color='black'), 
+            x=df['strike'], y=y_pred, mode='lines+markers', name='P-C (Fitted)',
+            line=dict(color='blue'), error_y=dict(type='data', array=df['spread']/2, visible=True, color='black'),
             marker=dict(size=6, color='red', symbol='x')
         ))
-
-        # Add mathematical formula annotation
-        annotation_text = r'$\Huge{P - C = Ke^{-r_{usd} \tau} - Se^{-r_{btc} \tau}}$'
-        
-        fig.add_annotation(
-            x=0.2, xref="paper", y=1.0, yref="paper",
-            text=annotation_text, showarrow=False, font=dict(color='black')
-        )
-        
-        # Add parameter values
-        fig.add_annotation(
-            x=0.2, xref="paper", y=0.85, yref="paper",
+        fig.add_annotation(x=0.2, xref="paper", y=1.0, yref="paper",
+            text=r'$\Huge{P - C = Ke^{-r_{usd} \tau} - Se^{-r_{btc} \tau}}$', showarrow=False, font=dict(color='black'))
+        fig.add_annotation(x=0.2, xref="paper", y=0.85, yref="paper",
             text=f'slope= {fitted_result["coef"]:.4f}, intercept= {fitted_result["const"]:.4f} '
-                 f'r_usd= {fitted_result["r"]:.4f}, r_btc= {fitted_result["q"]:.4f}',
-            showarrow=False, font=dict(color='black')
-        )
-        
-        # Configure layout
-        title_text = ('Weighted Least Squared (WLS) Regression:<br>'
-                     f'date={self.date_str} expiry={expiry}, S={S}, time={timestamp}, '
-                     f'R²={fitted_result["r2"]:.4f}, isFutExpiry={self.is_fut_expiry(expiry)}')
-
-        fig.update_layout(
-            title=dict(text=title_text),
-            yaxis_zeroline=False, 
-            font=dict(size=10),
-            width=width, height=height,
-            xaxis_zeroline=False, 
-            xaxis=dict(title='Strike (K)'), 
-            yaxis=dict(title='P - C')
-        )
+                 f'r_usd= {fitted_result["r"]:.4f}, r_btc= {fitted_result["q"]:.4f}', showarrow=False, font=dict(color='black'))
+        title_text = (f'<b>Weighted Least Squared (WLS) Regression:</b><br>time={timestamp}| expiry={expiry}| S={S}| '
+                     f'R²={fitted_result["r2"]:.4f}| isFutExpiry={expiry in self.future_expiries}')
+        fig.update_layout(title=dict(text=title_text, x=0.5, xanchor='center'), 
+                          yaxis_zeroline=False, font=dict(size=10), 
+                          width=width, height=height, xaxis_zeroline=False, 
+                          xaxis=dict(title='Strike (K)'), yaxis=dict(title='P - C'))
         self._safe_show(fig)
 
-    def plot_synthetic_bid_ask(self, expiry: str, timestamp: str,
-                              df_option_synthetic: pl.DataFrame, fitted_result: dict,
-                              use_fitted_rate: bool = False, width: int = 675, height: int = 450, **kwargs):
-        """
-        Plot synthetic forward prices vs futures market prices.
-        
-        Args:
-            expiry: Option expiry
-            timestamp: Analysis timestamp
-            df_option_synthetic: Synthetic option data
-            fitted_result: Regression results
-            use_fitted_rate: Whether to use fitted USD rate for discounting
-        """
-        fig = go.Figure()
-        
-        rate = fitted_result['r'] if use_fitted_rate else 0.0
-
-        # Calculate synthetic prices
-        df = df_option_synthetic.with_columns(
-            (-pl.col('ask')*np.exp(rate*pl.col('tau')) + pl.col('strike')).alias('synthetic_bid'),
-            (-pl.col('bid')*np.exp(rate*pl.col('tau')) + pl.col('strike')).alias('synthetic_ask')
-        )
-
-        # Add synthetic bid/ask traces
-        fig.add_trace(go.Scatter(
-            x=df['strike'], y=df['synthetic_bid'], 
-            mode='markers+lines', name='Synthetic Bid', 
-            line=dict(color='blue'), 
-            marker=dict(size=6, color='red', symbol='x')
-        ))
-
-        fig.add_trace(go.Scatter(
-            x=df['strike'], y=df['synthetic_ask'], 
-            mode='markers+lines', name='Synthetic Ask', 
-            line=dict(color='blue'), 
-            marker=dict(size=6, color='red', symbol='x')
-        ))
-        
-        # Add futures market data if available
-        if 'bid_price_fut' in df.columns and 'ask_price_fut' in df.columns:
-            fig.add_trace(go.Scatter(
-                x=df['strike'], y=kwargs.get('bid_price_fut', df['bid_price_fut']), 
-                mode='lines', name='Future Lower Bound', 
-                line=dict(color='black', dash='dot', width=1)
-            ))
-            
-            fig.add_trace(go.Scatter(
-                x=df['strike'], y=kwargs.get('ask_price_fut', df['ask_price_fut']),
-                mode='lines', name='Future Upper Bound',
-                line=dict(color='black', dash='dot', width=1)
-            ))
-        
-        # Add fitted forward price line
-        fig.add_trace(go.Scatter(
-            x=df['strike'],
-            y=np.full(len(df['strike']), fitted_result['F']),
-            mode='lines', name='Fitted Forward Price',
-            line=dict(color='green')
-        ))
-
-        fig.update_layout(
-            title=dict(text=f'date={timestamp}, expiry={expiry}, '
-                           f'S={df_option_synthetic["S"][0]}, r_usd={rate:.4f}'),
-            xaxis=dict(title='Strike (K)'),
-            yaxis=dict(title='Forward Price'),
-            width=width, height=height,
-        )
+    def plot_synthetic_bid_ask(self, expiry: str, timestamp: str, df: pl.DataFrame, fitted_result: dict, width: int = 600, height: int = 450, **kwargs):
+        fig = make_subplots(rows=1, cols=2, subplot_titles=(f'r = 0.0 (arb could arise across the strike for back date)', f'r = {fitted_result["r"]:.4f}'), shared_yaxes=True)
+        rates = [0.0, fitted_result['r']]
+        for i, rate in enumerate(rates):
+            col = i + 1
+            df = df.with_columns(
+                (-pl.col('ask')*np.exp(rate*pl.col('tau')) + pl.col('strike')).alias('synthetic_bid'),
+                (-pl.col('bid')*np.exp(rate*pl.col('tau')) + pl.col('strike')).alias('synthetic_ask')
+            )
+            fig.add_trace(go.Scatter(x=df['strike'], y=df['synthetic_bid'], mode='markers+lines', name='Synthetic Bid',
+                line=dict(color='blue'), marker=dict(size=6, color='red', symbol='x'), showlegend=(i == 0)), row=1, col=col)
+            fig.add_trace(go.Scatter(x=df['strike'], y=df['synthetic_ask'], mode='markers+lines', name='Synthetic Ask',
+                line=dict(color='blue'), marker=dict(size=6, color='red', symbol='x'), showlegend=(i == 0)), row=1, col=col)
+            if 'bid_price_fut' in df.columns and 'ask_price_fut' in df.columns:
+                fig.add_trace(go.Scatter(x=df['strike'], y=kwargs.get('bid_price_fut', df['bid_price_fut']), mode='lines', name='Future Lower Bound',
+                    line=dict(color='black', dash='dot', width=1), showlegend=(i == 0)), row=1, col=col)
+                fig.add_trace(go.Scatter(x=df['strike'], y=kwargs.get('ask_price_fut', df['ask_price_fut']), mode='lines', name='Future Upper Bound',
+                    line=dict(color='black', dash='dot', width=1), showlegend=(i == 0)), row=1, col=col)
+            if i == 1:
+                fig.add_trace(go.Scatter(x=df['strike'], y=np.full(len(df['strike']), fitted_result['F']), mode='lines', name='Fitted Forward Price',
+                    line=dict(color='green'), showlegend=(i == 0)), row=1, col=col)
+        fig.update_layout(title=dict(text=f'<b>Implied Forward from FV(C-P) + K <br>time={timestamp}| expiry={expiry}| S={df["S"][0]}| '
+                                     f'fitted r_usd={fitted_result["r"]:.4f}</b>', x=0.5, xanchor='center'),
+            xaxis=dict(title='Strike (K)'), xaxis2=dict(title='Strike (K)'), yaxis=dict(title='Forward Price', range=[df['synthetic_bid'].median()*0.975, df['synthetic_ask'].median()*1.025]),
+            width=width*2, height=height, legend=dict(orientation='h', yanchor='bottom', y=-0.3, xanchor='center', x=0.5))
         self._safe_show(fig)
 
-    def plot_time_series_analysis(self, df_results: pl.DataFrame, metric: str = None) -> None:
-        """
-        Create time series plots for forward prices and rate analysis.
-        
-        Args:
-            df_results: DataFrame containing time series results
-            metric: Single metric to plot, or None for comprehensive multi-panel view
-        """
-        if df_results.is_empty():
-            print("❌ No data available for time series plotting")
-            return
-            
-        # Single metric plot
-        if metric:
-            fig = make_subplots(specs=[[{"secondary_y": True}]])
-            
-            for expiry in df_results['expiry'].unique():
-                expiry_data = df_results.filter(pl.col('expiry') == expiry)
-                fig.add_trace(go.Scatter(
-                    x=expiry_data["timestamp"], 
-                    y=expiry_data[metric], 
-                    name=f'{expiry}', 
-                    mode='lines'
-                ))
-
-            fig.update_layout(
-                title=dict(text=f'{metric} across different expiries'),
-                yaxis_zeroline=False, xaxis_zeroline=False,
-                xaxis=dict(title='Time'), yaxis=dict(title=metric),
-                width=675, height=450,
-            )
-            self._safe_show(fig)
-            return
-            
-        # Multi-panel comprehensive analysis
-        print("📊 CREATING TIME SERIES PLOTS")
-        
-        try:
-            # Prepare data with derived columns
-            df_plot = df_results.with_columns([
-                (pl.col('r') - pl.col('q')).alias('r_minus_q'),
-                (pl.col('F') - 62000).alias('base_offset')  # Assuming ~62k spot
-            ]).sort('timestamp')
-            
-            # Get unique expiries and colors
-            expiries = sorted(df_plot['expiry'].unique())
-            
-            # Simple color palette
-            color_map = {
-                '15MAR24': '#1f77b4', '1MAR24': '#ff7f0e', '22MAR24': '#2ca02c',
-                '26APR24': '#d62728', '29FEB24': '#9467bd', '29MAR24': '#8c564b',
-                '2MAR24': '#e377c2', '31MAY24': '#7f7f7f', '3MAR24': '#bcbd22',
-                '8MAR24': '#17becf'
-            }
-            colors = [color_map.get(exp, '#1f77b4') for exp in expiries]
-            
-            print(f"Plotting {len(expiries)} expiries")
-            
-            # Create 4-panel subplot
-            fig = make_subplots(
-                rows=2, cols=2,
-                subplot_titles=(
-                    'Forward Price ($)', 'Rate Spread (r-q)',
-                    'Base Offset ($)', 'USD Rate vs BTC Rate'
-                ),
-                vertical_spacing=0.15,
-                horizontal_spacing=0.1
-            )
-            
-            # Add traces for each panel
-            for i, exp in enumerate(expiries):
-                exp_data = df_plot.filter(pl.col('expiry') == exp)
+    def plot_time_series_base_offset_analysis(self, df_results: pl.DataFrame, sorted_expiries: list, date_str: str, weight: float) -> None:
+        # Create 4-panel plot 📈
+        fig = make_subplots(rows=4, cols=1, 
+                            subplot_titles=['USD Rate (r) %', 'BTC Rate (q) %', 'Rate Spread (r-q) %', 'Forward/Spot Ratio'], 
+                            vertical_spacing=0.08, shared_xaxes=True)
                 
-                # Panel 1: Forward prices
-                fig.add_trace(
-                    go.Scatter(
-                        x=exp_data['timestamp'].to_list(),
-                        y=exp_data['F'].to_list(),
-                        mode='lines', name=exp, line=dict(color=colors[i], width=2),
-                        legendgroup=exp, showlegend=(i == 0)
-                    ), row=1, col=1
-                )
-                
-                # Panel 2: Rate spread
-                fig.add_trace(
-                    go.Scatter(
-                        x=exp_data['timestamp'].to_list(),
-                        y=exp_data['r_minus_q'].to_list(),
-                        mode='lines', line=dict(color=colors[i], width=2),
-                        legendgroup=exp, showlegend=False
-                    ), row=1, col=2
-                )
-                
-                # Panel 3: Base offset
-                fig.add_trace(
-                    go.Scatter(
-                        x=exp_data['timestamp'].to_list(),
-                        y=exp_data['base_offset'].to_list(),
-                        mode='lines', line=dict(color=colors[i], width=2),
-                        legendgroup=exp, showlegend=False
-                    ), row=2, col=1
-                )
-                
-                # Panel 4: USD vs BTC rates
-                fig.add_trace(
-                    go.Scatter(
-                        x=exp_data['r'].to_list(),
-                        y=exp_data['q'].to_list(),
-                        mode='markers', marker=dict(color=colors[i], size=6),
-                        legendgroup=exp, showlegend=False
-                    ), row=2, col=2
-                )
-
-            fig.update_layout(
-                title=f'Bitcoin Options Analysis - {self.date_str}',
-                height=800, width=1200, font=dict(size=11)
-            )
+        # Plot each expiry 🎨
+        for i, exp in enumerate(sorted_expiries):
+            exp_data = df_results.filter(pl.col('expiry') == exp).sort('timestamp')
+            if exp_data.is_empty(): continue            
+            panels_data = [(exp_data['r'] * 100).to_list(), (exp_data['q'] * 100).to_list(),
+                        (exp_data['smoothened_r-q'] * 100).to_list(), (exp_data['F'] / exp_data['S']).to_list()]
             
-            # Update axis labels
-            fig.update_xaxes(title_text="Time", row=1, col=1)
-            fig.update_xaxes(title_text="Time", row=1, col=2) 
-            fig.update_xaxes(title_text="Time", row=2, col=1)
-            fig.update_xaxes(title_text="USD Rate (r)", row=2, col=2)
+            for panel, data in enumerate(panels_data, 1):
+                fig.add_trace(go.Scatter(x=exp_data['timestamp'], y=data, mode='lines+markers', name=exp,
+                    line=dict(width=2, color=COLOR_MAP[i % len(COLOR_MAP)]), marker=dict(size=4),
+                    showlegend=(panel == 1), legendgroup=exp), row=panel, col=1)
             
-            fig.update_yaxes(title_text="Forward ($)", row=1, col=1)
-            fig.update_yaxes(title_text="r-q", row=1, col=2)
-            fig.update_yaxes(title_text="Basis ($)", row=2, col=1)
-            fig.update_yaxes(title_text="BTC Rate (q)", row=2, col=2)
-            
-            self._safe_show(fig)
-            print("✅ Time series plots created successfully")
-            
-        except Exception as e:
-            print(f"❌ Error creating time series plots: {e}")
-
-    def plot_term_structure(self, df_results: pl.DataFrame, target_datetime) -> None:
-        """
-        Plot term structure of basis across expiries for a given datetime.
+                # Add raw spread as dotted line for comparison in panel 3
+                if panel == 3:
+                    fig.add_trace(go.Scatter(
+                        x=exp_data['timestamp'], y=(exp_data['r-q']*100).to_list(), 
+                        line=dict(dash="dot", color="gray", width=1),
+                        name=f"{exp} (raw)", legendgroup=exp, showlegend=False,
+                        hovertemplate="Raw rate spread: %{y:.3f}%"
+                    ), row=panel, col=1)
         
-        Args:
-            df_results: Results DataFrame with basis calculations
-            target_datetime: Specific datetime to analyze
-        """
-        # Filter for specific datetime and calculate basis
-        filtered_data = df_results.filter(pl.col('timestamp') == target_datetime)
+        # Layout and show 🎪
+        title_method = "Constrained Optimization" if (use_constrained_optimization := True) else "WLS Regression"
+        fig.update_layout(title=f"<b>{date_str} Time-Series of Implied Rates and Forward/Spot Ratios - {title_method} (λ={weight})</b>",
+            height=800, template='plotly_white')
         
-        if filtered_data.is_empty():
-            print(f"❌ No data found for datetime {target_datetime}")
-            return
-            
-        # Add time to expiry calculation
-        plot_data = filtered_data.with_columns([
-            (pl.col('F') - 62000).alias('basis'),  # Assuming 62k spot reference
-            pl.col('expiry').alias('maturity')
-        ]).sort('expiry')
-        
-        fig = go.Figure()
-        
-        # Add basis term structure
-        fig.add_trace(go.Scatter(
-            x=plot_data['maturity'].to_list(),
-            y=plot_data['basis'].to_list(),
-            mode='lines+markers',
-            name='Basis',
-            line=dict(color='blue', width=3),
-            marker=dict(size=8, color='red')
-        ))
-        
-        fig.update_layout(
-            title=f'Basis Term Structure - {target_datetime}',
-            xaxis_title='Expiry',
-            yaxis_title='Basis ($)',
-            width=675, height=450
-        )
+        for i, label in enumerate(['USD Rate %', 'BTC Rate %', 'Rate Spread %', 'F/S Ratio'], 1):
+            fig.update_yaxes(title_text=label, row=i, col=1)
+        fig.update_xaxes(title_text="Time", row=4, col=1)
         
         self._safe_show(fig)
-        print(f"✅ Term structure plot created for {target_datetime}")
+        print("✅ Visualization complete!")

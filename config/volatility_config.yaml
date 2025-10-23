@@ -10,21 +10,31 @@ data:
   use_orderbook_data: true
   orderbook_level: 0
   
-  # Market data processing
-  market_data:
-    # Minimum number of strikes required for calibration
-    min_strikes: 5
-    
-    # Strike range constraints (as percentage of forward price)
-    min_strike_ratio: 0.7  # 70% of forward price
-    max_strike_ratio: 1.3  # 130% of forward price
-    
-    # Minimum time to expiry (in years) for analysis
-    min_time_to_expiry: 0.01  # ~4 days
-    
-    # Volatility data validation
-    min_volatility: 0.05   # 5% minimum volatility
-    max_volatility: 5.0    # 500% maximum volatility
+# Market data processing
+market_data:
+  # Minimum number of strikes required for calibration
+  min_strikes: 5
+  
+  # Strike range constraints (as percentage of forward price)
+  min_strike_ratio: 0.7  # 70% of forward price
+  max_strike_ratio: 1.3  # 130% of forward price
+  
+  # Minimum time to expiry (in years) for analysis
+  min_time_to_expiry: 0.01  # ~4 days
+  
+  # Volatility data validation
+  min_volatility: 0.05   # 5% minimum volatility
+  max_volatility: 5.0    # 500% maximum volatility
+
+# Analysis Configuration
+analysis:
+
+# Fitting Algorithm Parameters
+fitting:
+
+
+# Result Management
+results:
 
 # Model Configuration
 models:

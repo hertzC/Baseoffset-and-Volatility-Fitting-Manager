@@ -24,21 +24,21 @@ Handles processing of Deribit Bitcoin options market data including:
 """
 
 from datetime import datetime
-import numpy as np
 import polars as pl
 
 # Import shared option constraints module
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
-from utils.pricer.option_constraints import apply_option_constraints, tighten_option_spreads_separate_columns
+from config.config_loader import Config
+from utils.pricer.option_constraints import tighten_option_spreads_separate_columns
 
 
 class DeribitMDManager:
     """Manager for processing Deribit market data and constructing option chains."""
     CONFLATION_COLUMNS = ['bid_price', 'ask_price']
 
-    def __init__(self, df: pl.LazyFrame, date_str: str):
+    def __init__(self, df: pl.LazyFrame, date_str: str, config_loader: Config):
         """
         Initialize the market data manager.
         
@@ -51,6 +51,7 @@ class DeribitMDManager:
         self.df_symbol = self.get_symbol_lookup()
         self.fut_expiries = self.find_expiries(is_future=True)
         self.opt_expiries = self.find_expiries(is_future=False)
+        self.config_loader = config_loader
 
     def get_symbol_lookup(self) -> pl.DataFrame:
         """Create symbol lookup table with categorization flags."""
@@ -267,28 +268,7 @@ class DeribitMDManager:
             
         return result.select(base_columns).sort('strike')
 
-    def tighten_option_spread(self, df: pl.DataFrame) -> pl.DataFrame:
-        """
-        Apply monotonicity constraints and no-arbitrage bounds to option spreads.
-        
-        Args:
-            df: Option chain DataFrame
-            
-        Returns:
-            DataFrame with tightened spreads and original values preserved
-        """
-        # Use the shared function for separate columns format
-        return tighten_option_spreads_separate_columns(
-            df,
-            spot_col='S',
-            strike_col='strike',
-            call_bid_col='bid_price',
-            call_ask_col='ask_price',
-            put_bid_col='bid_price_P',
-            put_ask_col='ask_price_P'
-        )
-
-    def create_option_synthetic(self, df: pl.DataFrame, expiry: str, timestamp: datetime) -> tuple[pl.DataFrame, pl.DataFrame]:
+    def create_option_synthetic(self, df: pl.DataFrame, expiry: str, timestamp: datetime, volume_threshold: float = 0.0, interest_rate: float|None = None) -> tuple[pl.DataFrame, pl.DataFrame]:
         """
         Create synthetic option data for put-call parity analysis.
         
@@ -314,7 +294,8 @@ class DeribitMDManager:
         
         # Apply spread tightening
         # print(f"📊 Modifying option chain size....")
-        df_modified_option_chain = self.tighten_option_spread(df_option_chain)
+        interest_rate = interest_rate or self.config_loader.default_interest_rate
+        df_modified_option_chain = tighten_option_spreads_separate_columns(df_option_chain, volume_threshold=volume_threshold, interest_rate=interest_rate)
         
         # Create synthetic data, filtering out invalid options
         df_option_synthetic = self.get_option_synthetic(
