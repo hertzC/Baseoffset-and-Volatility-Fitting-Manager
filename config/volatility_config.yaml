@@ -50,12 +50,12 @@ models:
     bounds:
       vr: [0.05, 5.0]      # volatility reference bounds
       sr: [-2.0, 2.0]      # slope reference bounds  
-      pc: [-5.0, 5.0]      # put curvature bounds
-      cc: [-5.0, 5.0]      # call curvature bounds
-      dc: [-2.0, 0.0]      # down cutoff bounds (must be negative)
-      uc: [0.0, 2.0]       # up cutoff bounds (must be positive)
-      dsm: [0.01, 2.0]     # down smoothing bounds (must be positive)
-      usm: [0.01, 2.0]     # up smoothing bounds (must be positive)
+      pc: [0.001, 5.0]      # put curvature bounds
+      cc: [0.001, 5.0]      # call curvature bounds
+      dc: [-5.0, 0.0]      # down cutoff bounds (must be negative)
+      uc: [0.0, 5.0]       # up cutoff bounds (must be positive)
+      dsm: [0.01, 10.0]     # down smoothing bounds (must be positive)
+      usm: [0.01, 10.0]     # up smoothing bounds (must be positive)
   
   # Time-Adjusted Wing Model settings (uses same parameters as wing_model)
   time_adjusted_wing_model:
@@ -66,12 +66,12 @@ models:
     bounds:
       vr: [0.05, 5.0]
       sr: [-2.0, 2.0]
-      pc: [-5.0, 5.0]
-      cc: [-5.0, 5.0]
-      dc: [-2.0, 0.0]
-      uc: [0.0, 2.0]
-      dsm: [0.01, 2.0]
-      usm: [0.01, 2.0]
+      pc: [0.001, 5.0]
+      cc: [0.001, 5.0]
+      dc: [-5.0, 0.0]
+      uc: [0.0, 5.0]
+      dsm: [0.01, 10.0]
+      usm: [0.01, 10.0]
 
 # Calibration Configuration
 calibration:
@@ -224,29 +224,3 @@ paths:
   # Default data file patterns
   data_file_pattern_bbo: "{data_dir}/{date_str}.market_updates.log"
   data_file_pattern_orderbook: "{data_dir}/{date_str}.output.csv.gz"
-
-# Development and Testing
-development:
-  # Test mode settings
-  test_mode:
-    # Use synthetic data for testing
-    use_synthetic_data: false
-    
-    # Reduced dataset for quick testing
-    quick_test: false
-    
-    # Test data parameters
-    synthetic_data:
-      num_strikes: 20
-      forward_price: 60000.0
-      time_to_expiry: 0.25
-      atm_vol: 0.7
-      
-  # Regression testing
-  regression:
-    # Save results for regression testing
-    save_baselines: false
-    # Baseline directory
-    baseline_dir: "test_baselines"
-    # Tolerance for regression tests
-    tolerance: 1e-6

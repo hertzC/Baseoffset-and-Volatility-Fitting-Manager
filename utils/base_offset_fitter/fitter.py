@@ -1,21 +1,20 @@
 from datetime import datetime
 from typing import Union
 import numpy as np
+from config.base_offset_config import BaseOffsetConfig
+from config.volatility_config import VolatilityConfig
 from utils.base_offset_fitter import Result
 from abc import ABC, abstractmethod
 
 from utils.base_offset_fitter.maths import convert_paramter_into_rate
 from utils.market_data.deribit_md_manager import DeribitMDManager
 from utils.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
-from config.config_loader import Config
 
 
 class Fitter(ABC):
     """ Base Class for BaseOffset Fitter """
 
-    def __init__(self, 
-                 symbol_manager: Union[DeribitMDManager, OrderbookDeribitMDManager],
-                 config_loader: Config,):
+    def __init__(self, symbol_manager: Union[DeribitMDManager, OrderbookDeribitMDManager], config_loader: VolatilityConfig|BaseOffsetConfig):
         self.symbol_manager = symbol_manager
         self.config_loader = config_loader
         self._can_print = False

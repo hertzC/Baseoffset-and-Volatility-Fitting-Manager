@@ -5,21 +5,20 @@ Extracts USD and BTC interest rates from options pricing data.
 
 from typing import Union
 import polars as pl
+from config.base_offset_config import BaseOffsetConfig
+from config.volatility_config import VolatilityConfig
 from utils.base_offset_fitter import Result
 from utils.base_offset_fitter.fitter import Fitter
 from utils.market_data.deribit_md_manager import DeribitMDManager
 from utils.market_data.orderbook_deribit_md_manager import OrderbookDeribitMDManager
-from config.config_loader import Config
 import statsmodels.api as sm
 
 
 class WLSRegressor(Fitter):
     """Weighted Least Squares regressor for put-call parity analysis."""
     
-    def __init__(self, 
-                 symbol_manager: Union[DeribitMDManager, OrderbookDeribitMDManager],
-                 config_loader: Config                 
-                ):
+    def __init__(self, symbol_manager: Union[DeribitMDManager, OrderbookDeribitMDManager],
+                 config_loader: VolatilityConfig|BaseOffsetConfig):
         super().__init__(symbol_manager, config_loader)
         self.set_printable(self.config_loader.get('fitting.wls.printable', False))
 

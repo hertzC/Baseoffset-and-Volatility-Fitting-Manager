@@ -10,6 +10,8 @@ import time
 from typing import Any, List, Optional, Tuple
 from scipy import optimize
 
+from config.volatility_config import VolatilityConfig
+
 from .base_calibrator import BaseVolatilityCalibrator, DEObjectiveFunction
 from ..calibration_result import CalibrationResult
 
@@ -27,9 +29,8 @@ class GlobalVolatilityCalibrator(BaseVolatilityCalibrator):
     - Differential Evolution: Population-based global optimizer (default)
     """
     
-    def __init__(self, model_class: type, enable_bounds: bool = True, 
-                 tolerance: float = 1e-6, arbitrage_penalty: float = 1e5, 
-                 max_iterations: int = 1000, workers: int = 1):
+    def __init__(self, model_class: type, enable_bounds: bool = True, tolerance: float = 1e-6, arbitrage_penalty: float = 1e5, 
+                 max_iterations: int = 1000, workers: int = 1, config_loader: VolatilityConfig|None = None):
         """
         Initialize global calibrator.
         
@@ -41,7 +42,7 @@ class GlobalVolatilityCalibrator(BaseVolatilityCalibrator):
             max_iterations: Maximum number of optimization iterations
             workers: Number of parallel workers for optimization
         """
-        super().__init__(model_class, enable_bounds, tolerance, arbitrage_penalty, max_iterations)
+        super().__init__(model_class, enable_bounds, tolerance, arbitrage_penalty, max_iterations, config_loader=config_loader)
         self.workers = workers
 
     def calibrate(self, initial_params: Any, strikes: List[float], market_volatilities: List[float],

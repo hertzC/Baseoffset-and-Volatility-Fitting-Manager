@@ -154,19 +154,3 @@ paths:
   # Default data file pattern (will be formatted with date_str)
   data_file_pattern_bbo: "{data_dir}/{date_str}.market_updates.log"
   data_file_pattern_orderbook: "{data_dir}/{date_str}.output.csv.gz"
-
-# Development and Testing
-development:
-  # Enable development mode features
-  debug_mode: false
-  
-  # Suppress warnings
-  suppress_warnings: true
-  
-  # Test mode settings
-  test_mode:
-    # Use sample data instead of real data files
-    use_sample_data: false
-    
-    # Reduce analysis scope for faster testing
-    quick_analysis: false

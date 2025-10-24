@@ -152,6 +152,22 @@ class PerformanceComponent(BaseConfigComponent):
             'lazy_loading': False
         })
     
+    # Development and testing settings
+    
+    def get_synthetic_data_config(self) -> Dict[str, Any]:
+        """Get synthetic data configuration for testing."""
+        return self.get('development.test_mode.synthetic_data', {
+            'num_strikes': 20,
+            'forward_price': 60000.0,
+            'time_to_expiry': 0.25,
+            'atm_vol': 0.7
+        })
+    
+    @property
+    def baseline_dir(self) -> str:
+        """Get baseline directory for regression tests."""
+        return self.get('development.regression.baseline_dir', 'test_baselines')
+    
     def get_all_settings(self) -> Dict[str, Any]:
         """Get all performance configuration settings."""
         return {

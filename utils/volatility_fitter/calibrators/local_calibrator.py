@@ -10,6 +10,8 @@ import time
 from typing import Any, List, Optional, Tuple
 from scipy import optimize
 
+from config.volatility_config import VolatilityConfig
+
 from .base_calibrator import BaseVolatilityCalibrator
 from ..calibration_result import CalibrationResult
 
@@ -27,9 +29,8 @@ class LocalVolatilityCalibrator(BaseVolatilityCalibrator):
     - L-BFGS-B: Limited-memory Broyden-Fletcher-Goldfarb-Shanno with bounds
     """
     
-    def __init__(self, model_class: type, method: str = "SLSQP", 
-                 enable_bounds: bool = True, tolerance: float = 1e-6,
-                 arbitrage_penalty: float = 1e5, max_iterations: int = 1000):
+    def __init__(self, model_class: type, method: str = "SLSQP", enable_bounds: bool = True, tolerance: float = 1e-6,
+                 arbitrage_penalty: float = 1e5, max_iterations: int = 1000, config_loader: VolatilityConfig|None = None):
         """
         Initialize local calibrator with specific optimization method.
         
@@ -41,7 +42,7 @@ class LocalVolatilityCalibrator(BaseVolatilityCalibrator):
             arbitrage_penalty: Penalty weight for arbitrage violations
             max_iterations: Maximum number of optimization iterations
         """
-        super().__init__(model_class, enable_bounds, tolerance, arbitrage_penalty, max_iterations)
+        super().__init__(model_class, enable_bounds, tolerance, arbitrage_penalty, max_iterations, config_loader=config_loader)
         
         if method not in ["SLSQP", "L-BFGS-B"]:
             raise ValueError(f"LocalVolatilityCalibrator only supports SLSQP and L-BFGS-B methods, got: {method}")

@@ -9,7 +9,8 @@ then behaves exactly like the standard DeribitMDManager.
 import numpy as np
 import polars as pl
 
-from config.config_loader import Config
+from config.base_offset_config import BaseOffsetConfig
+from config.volatility_config import VolatilityConfig
 
 from .orderbook_helper import get_volume_targeted_price
 from .deribit_md_manager import DeribitMDManager
@@ -30,7 +31,7 @@ class OrderbookDeribitMDManager(DeribitMDManager):
     """
     CONFLATION_COLUMNS = ['bid_price', 'ask_price', 'bid_size', 'ask_size']
 
-    def __init__(self, df_orderbook: pl.LazyFrame, date_str: str, config_loader: Config):
+    def __init__(self, df_orderbook: pl.LazyFrame, date_str: str, config_loader: VolatilityConfig|BaseOffsetConfig):
         """
         Initialize with order book depth data, converting to BBO format.
         

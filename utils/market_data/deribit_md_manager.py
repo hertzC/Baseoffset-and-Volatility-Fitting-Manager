@@ -27,10 +27,10 @@ from datetime import datetime
 import polars as pl
 
 # Import shared option constraints module
-import sys
-import os
+import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
-from config.config_loader import Config
+from config.base_offset_config import BaseOffsetConfig
+from config.volatility_config import VolatilityConfig
 from utils.pricer.option_constraints import tighten_option_spreads_separate_columns
 
 
@@ -38,7 +38,7 @@ class DeribitMDManager:
     """Manager for processing Deribit market data and constructing option chains."""
     CONFLATION_COLUMNS = ['bid_price', 'ask_price']
 
-    def __init__(self, df: pl.LazyFrame, date_str: str, config_loader: Config):
+    def __init__(self, df: pl.LazyFrame, date_str: str, config_loader: VolatilityConfig|BaseOffsetConfig):
         """
         Initialize the market data manager.
         

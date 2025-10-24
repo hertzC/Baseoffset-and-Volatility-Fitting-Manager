@@ -200,54 +200,54 @@ class BaseConfig(ABC):
     @property
     def date_str(self) -> str:
         """Get date string in YYYYMMDD format."""
-        return self.get('data.date_str')
+        return self.data.date_str
     
     @property
     def use_orderbook_data(self) -> bool:
         """Get whether to use orderbook depth data."""
-        return self.get('data.use_orderbook_data', False)
+        return self.data.use_orderbook_data
     
     @property
     def orderbook_level(self) -> int:
         """Get orderbook level to use."""
-        return self.get('data.orderbook_level', 0)
+        return self.data.orderbook_level
     
     @property
     def default_interest_rate(self) -> float:
         """Get the default interest rate."""
-        return self.get('data.default_interest_rate', 0.0)
+        return self.data.default_interest_rate
     
     # Market Data Processing Properties
     
     @property
     def conflation_every(self) -> str:
         """Get conflation interval."""
-        return self.get('market_data.conflation.every')
+        return self.market_data.conflation_every
     
     @property
     def conflation_period(self) -> str:
         """Get conflation period."""
-        return self.get('market_data.conflation.period')
+        return self.market_data.conflation_period
     
     @property
     def tightening_volume_threshold(self) -> float:
         """Get volume threshold for option spread tightening."""
-        return self.get('market_data.option_constraints.tightening_volume_threshold', 5.0)
+        return self.market_data.tightening_volume_threshold
     
     @property
     def price_widening_factor(self) -> float:
         """Get price widening factor."""
-        return self.get('market_data.price_widening_factor', 0.00025)
+        return self.market_data.price_widening_factor
     
     @property
     def target_coin_volume(self) -> float:
         """Get target coin volume."""
-        return self.get('market_data.target_coin_volume', 1.0)
+        return self.market_data.target_coin_volume
     
     @property
     def future_min_tick_size(self) -> float:
         """Get future minimum tick size."""
-        return self.get('market_data.future_min_tick_size', 0.0001)
+        return self.market_data.future_min_tick_size
 
     def get_data_file_path(self) -> str:
         """
@@ -256,10 +256,7 @@ class BaseConfig(ABC):
         Returns:
             Full path to the data file
         """
-        data_dir = self.get('paths.data_orderbook') if self.use_orderbook_data else self.get('paths.data_bbo')
-        pattern = self.get('paths.data_file_pattern_orderbook') if self.use_orderbook_data else self.get('paths.data_file_pattern_bbo')
-        
-        return pattern.format(data_dir=data_dir, date_str=self.date_str)
+        return self.data.get_data_file_path()
     
     # Component Access Methods
     

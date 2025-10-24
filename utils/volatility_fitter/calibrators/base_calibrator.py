@@ -8,6 +8,8 @@ shared functionality and defines the common interface.
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional, Tuple
 import numpy as np
+
+from config.volatility_config import VolatilityConfig
 from ..calibration_result import CalibrationResult
 from ..base_volatility_model_abstract import BaseVolatilityModel
 
@@ -21,9 +23,8 @@ class BaseVolatilityCalibrator(ABC):
     calibrate method with their specific optimization strategy.
     """
     
-    def __init__(self, model_class: type, enable_bounds: bool = True, 
-                 tolerance: float = 1e-6, arbitrage_penalty: float = 1e5,
-                 max_iterations: int = 1000):
+    def __init__(self, model_class: type, enable_bounds: bool = True, tolerance: float = 1e-6, arbitrage_penalty: float = 1e5,
+                 max_iterations: int = 1000, config_loader: VolatilityConfig|None = None):
         """
         Initialize base calibrator with common parameters.
         
@@ -39,6 +40,7 @@ class BaseVolatilityCalibrator(ABC):
         self.tolerance = tolerance
         self.arbitrage_penalty = arbitrage_penalty
         self.max_iterations = max_iterations
+        self.config_loader = config_loader
 
     def _objective_function(self, x: np.ndarray, initial_params: Any, param_names: List[str],
                            strikes: List[float], market_volatilities: List[float], 
@@ -87,8 +89,7 @@ class BaseVolatilityCalibrator(ABC):
             print(f"Calibration error: {str(e)}")
             return 1e10
 
-    def _create_parameter_object(self, initial_params: Any, param_names: List[str], 
-                               optimized_values: np.ndarray) -> Any:
+    def _create_parameter_object(self, initial_params: Any, param_names: List[str], optimized_values: np.ndarray) -> Any:
         """
         Create updated parameter object with optimized values.
         
@@ -109,6 +110,8 @@ class BaseVolatilityCalibrator(ABC):
                 # Skip methods, functions, properties, and class attributes
                 if not callable(attr_value):
                     param_dict[attr_name] = attr_value
+        if self.config_loader is not None:
+            param_dict['config'] = self.config_loader
         
         return type(initial_params)(**param_dict)
 

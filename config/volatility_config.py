@@ -61,310 +61,291 @@ class VolatilityConfig(BaseConfig):
     @property
     def min_strikes(self) -> int:
         """Get minimum number of strikes required for calibration."""
-        return self.get('market_data.min_strikes', 5)
+        return self.market_data.min_strikes
     
     @property
     def min_strike_ratio(self) -> float:
         """Get minimum strike ratio (as percentage of forward price)."""
-        return self.get('market_data.min_strike_ratio', 0.7)
+        return self.market_data.min_strike_ratio
     
     @property
     def max_strike_ratio(self) -> float:
         """Get maximum strike ratio (as percentage of forward price)."""
-        return self.get('market_data.max_strike_ratio', 1.3)
+        return self.market_data.max_strike_ratio
     
     @property
     def min_time_to_expiry(self) -> float:
         """Get minimum time to expiry (in years) for analysis."""
-        return self.get('market_data.min_time_to_expiry', 0.01)
+        return self.market_data.min_time_to_expiry
     
     @property
     def min_volatility(self) -> float:
         """Get minimum volatility threshold."""
-        return self.get('market_data.min_volatility', 0.05)
+        return self.market_data.min_volatility
     
     @property
     def max_volatility(self) -> float:
         """Get maximum volatility threshold."""
-        return self.get('market_data.max_volatility', 5.0)
+        return self.market_data.max_volatility
     
     # Model Configuration Properties
     
     def is_model_enabled(self, model_name: str) -> bool:
         """Check if a specific model is enabled."""
-        return self.get(f'models.enabled_models.{model_name}', True)
+        return self.models.is_model_enabled(model_name)
     
     @property
     def wing_model_enabled(self) -> bool:
         """Check if Traditional Wing Model is enabled."""
-        return self.is_model_enabled('wing_model')
+        return self.models.wing_model_enabled
     
     @property
     def future_min_tick_size(self) -> float:
         """Get future minimum tick size."""
-        return self.get('market_data.future_min_tick_size', 0.0001)
+        return self.market_data.future_min_tick_size
     
     @property
     def time_adjusted_wing_model_enabled(self) -> bool:
         """Check if Time-Adjusted Wing Model is enabled."""
-        return self.is_model_enabled('time_adjusted_wing_model')
+        return self.models.time_adjusted_wing_model_enabled
     
     def get_enabled_models(self) -> List[str]:
         """Get list of enabled model names."""
-        enabled_models = []
-        models_config = self.get('models.enabled_models', {})
-        for model_name, enabled in models_config.items():
-            if enabled:
-                enabled_models.append(model_name)
-        return enabled_models
+        return self.models.get_enabled_models()
     
     def get_model_config(self, model_name: str) -> Dict[str, Any]:
         """Get configuration for a specific model."""
-        return self.get(f'models.{model_name}', {})
+        return self.models.get_model_config(model_name)
     
     def get_initial_params(self, model_name: str) -> Dict[str, float]:
         """Get initial parameters for a model."""
-        return self.get(f'models.{model_name}.initial_params', {})
+        return self.models.get_initial_params(model_name)
     
     def get_parameter_bounds(self, model_name: str) -> List[Tuple[float, float]]:
         """Get parameter bounds for a model as list of tuples for optimization."""
-        bounds_dict = self.get(f'models.{model_name}.bounds', {})
-        
-        if isinstance(bounds_dict, list):
-            # Handle list format (legacy)
-            return [tuple(float(x) for x in bounds) for bounds in bounds_dict]
-        elif isinstance(bounds_dict, dict):
-            # Handle dictionary format - convert to ordered list of tuples for the model
-            param_order = ['vr', 'sr', 'pc', 'cc', 'dc', 'uc', 'dsm', 'usm']
-            bounds_list = []
-            for param in param_order:
-                if param in bounds_dict:
-                    bounds_list.append(tuple(float(x) for x in bounds_dict[param]))
-            return bounds_list
-        else:
-            return []
+        return self.models.get_parameter_bounds(model_name)
     
     @property
     def use_norm_term(self) -> bool:
         """Get whether to use normalization term for time-adjusted wing model."""
-        return self.get('models.time_adjusted_wing_model.use_norm_term', True)
+        return self.models.use_norm_term
     
     # Calibration Configuration Properties
     
     @property
     def calibration_method(self) -> str:
         """Get calibration optimization method."""
-        return self.get('calibration.unified_calibrator.method', 'SLSQP')
+        return self.calibration.method
     
     @property
     def calibration_tolerance(self) -> float:
         """Get calibration tolerance."""
-        return self.get('calibration.unified_calibrator.tolerance', 1e-10)
+        return self.calibration.tolerance
     
     @property
     def max_calibration_iterations(self) -> int:
         """Get maximum calibration iterations."""
-        return self.get('calibration.unified_calibrator.max_iterations', 1000)
+        return self.calibration.max_iterations
     
     @property
     def enable_bounds(self) -> bool:
         """Get whether to enable parameter bounds in calibration."""
-        return self.get('calibration.unified_calibrator.enable_bounds', True)
+        return self.calibration.enable_bounds
     
     @property
     def arbitrage_penalty(self) -> float:
         """Get arbitrage penalty factor."""
-        return self.get('calibration.unified_calibrator.arbitrage_penalty', 1e5)
+        return self.calibration.arbitrage_penalty
     
     @property
     def multi_start_enabled(self) -> bool:
         """Get whether multi-start optimization is enabled."""
-        return self.get('calibration.unified_calibrator.multi_start.enabled', False)
+        return self.calibration.multi_start_enabled
     
     @property
     def multi_start_num_starts(self) -> int:
         """Get number of multi-start optimization attempts."""
-        return self.get('calibration.unified_calibrator.multi_start.num_starts', 5)
+        return self.calibration.multi_start_num_starts
     
     @property
     def multi_start_random_seed(self) -> int:
         """Get random seed for multi-start optimization."""
-        return self.get('calibration.unified_calibrator.multi_start.random_seed', 42)
+        return self.calibration.multi_start_random_seed
     
     @property
     def enforce_arbitrage_free(self) -> bool:
         """Get whether to enforce arbitrage-free constraints."""
-        return self.get('calibration.model_specific.enforce_arbitrage_free', True)
+        return self.calibration.enforce_arbitrage_free
     
     @property
     def weighting_scheme(self) -> str:
         """Get weighting scheme for calibration."""
-        return self.get('calibration.weighting.scheme', 'vega')
+        return self.calibration.weighting_scheme
     
     @property
     def min_vega_threshold(self) -> float:
         """Get minimum vega threshold for vega weighting."""
-        return self.get('calibration.weighting.vega.min_vega', 0.01)
+        return self.calibration.min_vega_threshold
     
     @property
     def normalize_vega_weights(self) -> bool:
         """Get whether to normalize vega weights."""
-        return self.get('calibration.weighting.vega.normalize', True)
+        return self.calibration.normalize_vega_weights
     
     # Validation and Quality Control Properties
     
     @property
     def durrleman_num_points(self) -> int:
         """Get number of points for Durrleman condition check."""
-        return self.get('validation.arbitrage.durrleman.num_points', 501)
+        return self.validation.durrleman_num_points
     
     @property
     def min_g_value(self) -> float:
         """Get minimum g-value threshold for Durrleman condition."""
-        return self.get('validation.arbitrage.durrleman.min_g_value', 0.0)
+        return self.validation.min_g_value
     
     @property
     def arbitrage_lower_bound(self) -> float:
         """Get lower bound for arbitrage checking (as ratio of forward price)."""
-        return self.get('validation.arbitrage.arbitrage_bounds.lower_bound', 0.5)
+        return self.validation.arbitrage_lower_bound
     
     @property
     def arbitrage_upper_bound(self) -> float:
         """Get upper bound for arbitrage checking (as ratio of forward price)."""
-        return self.get('validation.arbitrage.arbitrage_bounds.upper_bound', 2.0)
+        return self.validation.arbitrage_upper_bound
     
     @property
     def max_rmse_threshold(self) -> float:
         """Get maximum acceptable RMSE for calibration."""
-        return self.get('validation.quality.max_rmse', 0.1)
+        return self.validation.max_rmse_threshold
     
     @property
     def min_r_squared(self) -> float:
         """Get minimum R-squared for goodness of fit."""
-        return self.get('validation.quality.min_r_squared', 0.8)
+        return self.validation.min_r_squared
     
     @property
     def max_param_change(self) -> float:
         """Get maximum parameter change tolerance between iterations."""
-        return self.get('validation.quality.max_param_change', 1e-6)
+        return self.validation.max_param_change
     
     # Output and Visualization Properties
     
     @property
     def surface_num_strikes(self) -> int:
         """Get number of strikes for surface generation."""
-        return self.get('output.surface.num_strikes', 100)
+        return self.output.surface_num_strikes
     
     @property
     def surface_strike_range(self) -> List[float]:
         """Get strike range for surface generation (as ratio of forward price)."""
-        return self.get('output.surface.strike_range', [0.5, 2.0])
+        return self.output.surface_strike_range
     
     @property
     def surface_precision(self) -> int:
         """Get output precision (decimal places) for surface generation."""
-        return self.get('output.surface.precision', 6)
+        return self.output.surface_precision
     
     @property
     def show_bid_ask_spread(self) -> bool:
         """Get whether to show bid/ask spread in plots."""
-        return self.get('output.plotting.show_bid_ask_spread', True)
+        return self.output.show_bid_ask_spread
     
     @property
     def show_market_data(self) -> bool:
         """Get whether to show market data in plots."""
-        return self.get('output.plotting.show_market_data', True)
+        return self.output.show_market_data
     
     @property
     def show_fitted_curve(self) -> bool:
         """Get whether to show fitted curve in plots."""
-        return self.get('output.plotting.show_fitted_curve', True)
+        return self.output.show_fitted_curve
     
     @property
     def show_error_bars(self) -> bool:
         """Get whether to show error bars in plots."""
-        return self.get('output.plotting.show_error_bars', True)
+        return self.output.show_error_bars
     
     @property
     def plot_theme(self) -> str:
         """Get plot theme."""
-        return self.get('output.plotting.theme', 'plotly_white')
+        return self.output.plot_theme
     
     @property
     def plot_width(self) -> int:
         """Get default plot width."""
-        return self.get('output.plotting.width', 800)
+        return self.output.plot_width
     
     @property
     def plot_height(self) -> int:
         """Get default plot height."""
-        return self.get('output.plotting.height', 600)
+        return self.output.plot_height
     
     @property
     def error_bar_opacity(self) -> float:
         """Get error bar transparency."""
-        return self.get('output.plotting.error_bars.opacity', 0.3)
+        return self.output.error_bar_opacity
     
     @property
     def export_formats(self) -> List[str]:
         """Get list of export file formats."""
-        return self.get('output.export.formats', ['csv', 'json'])
+        return self.output.export_formats
     
     @property
     def volatility_export_dir(self) -> str:
         """Get volatility export directory."""
-        return self.get('output.export.export_dir', 'volatility_results')
+        return self.output.export_dir
     
     # Performance and Development Properties
     
     @property
     def parallel_enabled(self) -> bool:
         """Get whether parallel processing is enabled."""
-        return self.get('performance.parallel.enabled', False)
+        return self.performance.parallel_enabled
     
     @property
     def num_processes(self) -> int:
         """Get number of processes for parallel processing."""
-        return self.get('performance.parallel.num_processes', -1)
+        return self.performance.num_processes
     
     @property
     def cache_enabled(self) -> bool:
         """Get whether caching is enabled."""
-        return self.get('performance.cache.enabled', False)
+        return self.performance.cache_enabled
     
     @property
     def cache_dir(self) -> str:
         """Get cache directory."""
-        return self.get('performance.cache.cache_dir', '.volatility_cache')
+        return self.performance.cache_dir
+    
+    @property
+    def debug_enabled(self) -> bool:
+        """Get whether debug mode is enabled."""
+        return self.performance.debug_enabled
     
     @property
     def debug_verbose(self) -> bool:
         """Get debug verbosity setting."""
-        return self.get('performance.debug.verbose', False)
+        return self.performance.debug_verbose
     
     @property
     def save_intermediate(self) -> bool:
         """Get whether to save intermediate results."""
-        return self.get('performance.debug.save_intermediate', False)
+        return self.performance.save_intermediate
         
     def get_synthetic_data_config(self) -> Dict[str, Any]:
         """Get synthetic data configuration for testing."""
-        return self.get('development.test_mode.synthetic_data', {
-            'num_strikes': 20,
-            'forward_price': 60000.0,
-            'time_to_expiry': 0.25,
-            'atm_vol': 0.7
-        })
+        return self.performance.get_synthetic_data_config()
     
     @property
     def baseline_dir(self) -> str:
         """Get baseline directory for regression tests."""
-        return self.get('development.regression.baseline_dir', 'test_baselines')
+        return self.performance.baseline_dir
         
     def get_calibration_config(self) -> Dict[str, Any]:
         """Get complete calibration configuration."""
-        return self.get('calibration', {})
+        return self.calibration.get_all_settings()
     
     def get_validation_config(self) -> Dict[str, Any]:
         """Get complete validation configuration.""" 
-        return self.get('validation', {})
+        return self.validation.get_all_settings()
