@@ -24,7 +24,7 @@ def load_baseoffset_results(date_str: str, results_path: str = "../results") -> 
     file_path = f'{results_path}/{date_str}/baseoffset_results.csv'
     
     return pl.read_csv(file_path).with_columns(
-        timestamp=pl.col('timestamp').cast(pl.Datetime('ns'))
+        timestamp=pl.col('timestamp').cast(pl.Datetime('us'))
     )
 
 
