@@ -96,7 +96,7 @@ class TestDeribitMDManager:
     @pytest.fixture
     def symbol_manager(self, sample_data):
         """Fixture to create DeribitMDManager instance."""
-        return DeribitMDManager(sample_data, "20240229")
+        return DeribitMDManager(sample_data, "20240229", None)
     
     def test_symbol_manager_initialization(self, symbol_manager):
         """Test that symbol manager initializes correctly."""
@@ -168,8 +168,7 @@ class TestRegressionComponents:
              'bid_price': 1000, 'ask_price': 1020, 'bid_size': 10, 'ask_size': 15}
         ]
         sample_df = pl.DataFrame(sample_data).lazy()
-        symbol_manager = DeribitMDManager(sample_df, "20240229")
-        
+        symbol_manager = DeribitMDManager(sample_df, "20240229", config_loader)
         wls = WLSRegressor(symbol_manager=symbol_manager, config_loader=config_loader)
         assert wls is not None
         assert hasattr(wls, 'fit')
@@ -186,7 +185,7 @@ class TestRegressionComponents:
              'bid_price': 1000, 'ask_price': 1020, 'bid_size': 10, 'ask_size': 15}
         ]
         sample_df = pl.DataFrame(sample_data).lazy()
-        symbol_manager = DeribitMDManager(sample_df, "20240229")
+        symbol_manager = DeribitMDManager(sample_df, "20240229", config_loader)
         
         wls = WLSRegressor(symbol_manager=symbol_manager, config_loader=config_loader)
         wls.set_printable(False)  # Suppress output during testing
@@ -219,7 +218,7 @@ class TestRegressionComponents:
              'bid_price': 1000, 'ask_price': 1020, 'bid_size': 10, 'ask_size': 15}
         ]
         sample_df = pl.DataFrame(sample_data).lazy()
-        symbol_manager = DeribitMDManager(sample_df, "20240229")
+        symbol_manager = DeribitMDManager(sample_df, "20240229", config_loader)
         
         nlm = NonlinearMinimization(symbol_manager=symbol_manager, config_loader=config_loader)
         assert nlm is not None
@@ -237,7 +236,7 @@ class TestRegressionComponents:
              'bid_price': 1000, 'ask_price': 1020, 'bid_size': 10, 'ask_size': 15}
         ]
         sample_df = pl.DataFrame(sample_data).lazy()
-        symbol_manager = DeribitMDManager(sample_df, "20240229")
+        symbol_manager = DeribitMDManager(sample_df, "20240229", config_loader)
         
         nlm = NonlinearMinimization(symbol_manager=symbol_manager, config_loader=config_loader)
         nlm.set_printable(False)  # Suppress output during testing
@@ -310,8 +309,8 @@ class TestNotebookWorkflow:
             df_raw = TestSampleDataGeneration.create_realistic_sample_data()
             
             # 2. Initialize symbol manager
-            symbol_manager = DeribitMDManager(df_raw, "20240229")
-            
+            symbol_manager = DeribitMDManager(df_raw, "20240229", None)
+
             # 3. Check basic functionality
             assert len(symbol_manager.opt_expiries) > 0, "Should have expiries"
             assert len(symbol_manager.df_symbol) > 0, "Should have symbols"

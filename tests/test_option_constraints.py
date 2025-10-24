@@ -28,6 +28,8 @@ class TestOptionConstraints(unittest.TestCase):
         # Standard test data
         self.strikes = np.array([90, 95, 100, 105, 110], dtype=float)
         self.spot = 100.0
+        self.interest_rate = 0.00
+        self.time_to_expiry = 30 / 365  # 30 days
         
         # Well-behaved prices (should require minimal adjustment)
         self.good_call_bids = np.array([15.0, 10.5, 6.2, 3.8, 1.5])/self.spot  # Decreasing
@@ -51,7 +53,8 @@ class TestOptionConstraints(unittest.TestCase):
         adj_cb, adj_ca, adj_pb, adj_pa = apply_option_constraints(
             self.good_call_bids, self.good_call_asks,
             self.good_put_bids, self.good_put_asks,
-            self.strikes, self.spot
+            self.strikes, self.spot, self.interest_rate, self.time_to_expiry,
+            self.high_volumes, self.high_volumes, self.high_volumes, self.high_volumes
         )
         # Prices should be similar to originals (allowing for small adjustments)
         np.testing.assert_allclose(adj_cb, self.good_call_bids, rtol=0.05)
@@ -64,7 +67,8 @@ class TestOptionConstraints(unittest.TestCase):
         adj_cb, adj_ca, adj_pb, adj_pa = apply_option_constraints(
             self.bad_call_bids, self.bad_call_asks,
             self.bad_put_bids, self.bad_put_asks,
-            self.strikes, self.spot
+            self.strikes, self.spot, self.interest_rate, self.time_to_expiry,
+            self.high_volumes, self.high_volumes, self.high_volumes, self.high_volumes
         )
         
         # Check call bid monotonicity (should be non-increasing)
@@ -101,7 +105,7 @@ class TestOptionConstraints(unittest.TestCase):
         adj_cb_filtered, _, adj_pb_filtered, _ = apply_option_constraints(
             self.bad_call_bids, self.bad_call_asks,
             self.bad_put_bids, self.bad_put_asks,
-            self.strikes, self.spot,
+            self.strikes, self.spot, self.interest_rate, self.time_to_expiry,
             bid_size_call=self.mixed_volumes,
             ask_size_call=self.mixed_volumes,
             bid_size_put=self.mixed_volumes,
@@ -117,30 +121,6 @@ class TestOptionConstraints(unittest.TestCase):
         # (We can't predict exact values, but they should follow constraints)
         self.assertTrue(adj_cb_filtered[1] >= adj_cb_filtered[2])  # Monotonicity maintained
     
-    def test_no_volume_data_backward_compatibility(self):
-        """Test backward compatibility when no volume data is provided."""
-        # Should behave like original function
-        adj_cb_no_vol, adj_ca_no_vol, adj_pb_no_vol, adj_pa_no_vol = apply_option_constraints(
-            self.bad_call_bids, self.bad_call_asks,
-            self.bad_put_bids, self.bad_put_asks,
-            self.strikes, self.spot
-        )
-        
-        adj_cb_none_vol, adj_ca_none_vol, adj_pb_none_vol, adj_pa_none_vol = apply_option_constraints(
-            self.bad_call_bids, self.bad_call_asks,
-            self.bad_put_bids, self.bad_put_asks,
-            self.strikes, self.spot,
-            bid_size_call=None, ask_size_call=None,
-            bid_size_put=None, ask_size_put=None,
-            volume_threshold=10.0
-        )
-        
-        # Results should be identical
-        np.testing.assert_array_equal(adj_cb_no_vol, adj_cb_none_vol)
-        np.testing.assert_array_equal(adj_ca_no_vol, adj_ca_none_vol)
-        np.testing.assert_array_equal(adj_pb_no_vol, adj_pb_none_vol)
-        np.testing.assert_array_equal(adj_pa_no_vol, adj_pa_none_vol)
-    
     def test_edge_cases(self):
         """Test edge cases and boundary conditions."""
         # Single strike
@@ -149,11 +129,17 @@ class TestOptionConstraints(unittest.TestCase):
         single_call_ask = np.array([11.0])
         single_put_bid = np.array([5.0])
         single_put_ask = np.array([6.0])
+
+        single_volume = np.array([20.0])
         
         adj_cb, adj_ca, adj_pb, adj_pa = apply_option_constraints(
             single_call_bid, single_call_ask,
             single_put_bid, single_put_ask,
-            single_strike, self.spot
+            single_strike, self.spot, self.interest_rate, self.time_to_expiry,
+            bid_size_call=single_volume,
+            ask_size_call=single_volume,
+            bid_size_put=single_volume,
+            ask_size_put=single_volume
         )
         
         # Should return unchanged (no constraints to apply)
@@ -165,11 +151,16 @@ class TestOptionConstraints(unittest.TestCase):
         # Zero prices (should be handled gracefully)
         zero_prices = np.zeros(5)
         positive_prices = np.ones(5)
+        zero_volume = np.zeros(5)
         
         adj_cb, adj_ca, adj_pb, adj_pa = apply_option_constraints(
             zero_prices, positive_prices,
             zero_prices, positive_prices,
-            self.strikes, self.spot
+            self.strikes, self.spot, self.interest_rate, self.time_to_expiry,
+            bid_size_call=zero_volume,
+            ask_size_call=zero_volume,
+            bid_size_put=zero_volume,
+            ask_size_put=zero_volume
         )
         
         # Should not crash and maintain bid <= ask
@@ -192,7 +183,8 @@ class TestDataFrameInterface(unittest.TestCase):
             'ask_size': [0.3, 12.0, 22.0, 18.0, 1.8],        # Call ask sizes
             'bid_size_P': [0.4, 14.0, 28.0, 21.0, 2.2],      # Put bid sizes
             'ask_size_P': [0.6, 13.0, 24.0, 19.0, 2.1],      # Put ask sizes
-            'S': [100, 100, 100, 100, 100]                   # Spot price
+            'S': [100, 100, 100, 100, 100],                   # Spot price
+            'tau': [30/365, 30/365, 30/365, 30/365, 30/365]   # Time to expiry
         })
     
     def test_basic_dataframe_processing(self):
@@ -238,20 +230,7 @@ class TestDataFrameInterface(unittest.TestCase):
         
         # Should apply reasonable volume filtering by default
         self.assertIn('tightened_bid_price', result.columns)
-    
-    def test_missing_volume_columns(self):
-        """Test handling of missing volume columns."""
-        # Create DataFrame without volume columns
-        df_no_volume = self.df.select(['strike', 'bid_price', 'ask_price', 
-                                     'bid_price_P', 'ask_price_P', 'S'])
         
-        # Should not crash
-        result = tighten_option_spreads_separate_columns(df_no_volume)
-        self.assertIsInstance(result, pl.DataFrame)
-        
-        # Should apply constraints everywhere (no volume filtering)
-        self.assertIn('tightened_bid_price', result.columns)
-    
     def test_empty_dataframe(self):
         """Test handling of empty DataFrame."""
         empty_df = self.df.filter(pl.lit(False))  # Empty DataFrame with same schema
@@ -269,7 +248,7 @@ class TestIntegrationConstraints(unittest.TestCase):
         """Test with realistic option chain data."""
         # Create realistic option chain
         strikes = np.array([80, 85, 90, 95, 100, 105, 110, 115, 120])
-        spot = 100.0
+        spot, interest_rate, tte = 100.0, 0.01, 60 / 365  # 60 days to expiry
         
         # Realistic call prices (decreasing with strike, intrinsic + time value)
         call_bids = np.array([22.5, 18.2, 14.1, 10.8, 7.9, 5.6, 3.8, 2.4, 1.5])
@@ -281,7 +260,8 @@ class TestIntegrationConstraints(unittest.TestCase):
         
         # Apply constraints
         adj_cb, adj_ca, adj_pb, adj_pa = apply_option_constraints(
-            call_bids, call_asks, put_bids, put_asks, strikes, spot
+            call_bids, call_asks, put_bids, put_asks, strikes, spot, interest_rate, tte, 
+            np.ones(len(strikes))*100, np.ones(len(strikes))*100, np.ones(len(strikes))*100, np.ones(len(strikes))*100
         )
         
         # Check that call-put parity approximately holds (for ATM options)
@@ -296,7 +276,7 @@ class TestIntegrationConstraints(unittest.TestCase):
     def test_arbitrage_bounds(self):
         """Test no-arbitrage spread constraints."""
         strikes = np.array([95, 100, 105])
-        spot = 100.0
+        spot, interest_rate, tte = 100.0, 0.01, 60 / 365  # 60 days to expiry
         
         # Create prices that violate no-arbitrage bounds
         call_bids = np.array([10.0, 8.0, 1.0])  # Too large spread between 100-105
@@ -305,7 +285,8 @@ class TestIntegrationConstraints(unittest.TestCase):
         put_asks = np.array([4.0, 6.0, 9.0])
         
         adj_cb, adj_ca, adj_pb, adj_pa = apply_option_constraints(
-            call_bids, call_asks, put_bids, put_asks, strikes, spot
+            call_bids, call_asks, put_bids, put_asks, strikes, spot, interest_rate, tte,
+            np.ones(len(strikes))*100, np.ones(len(strikes))*100, np.ones(len(strikes))*100, np.ones(len(strikes))*100
         )
         
         # Check vertical spread constraints

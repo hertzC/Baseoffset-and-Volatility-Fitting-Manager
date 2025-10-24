@@ -157,7 +157,7 @@ class TestDeribitMDManager(unittest.TestCase):
                 })
                 
         self.sample_df = pl.DataFrame(data).lazy()
-        self.md_manager = DeribitMDManager(self.sample_df, "20240229")
+        self.md_manager = DeribitMDManager(self.sample_df, "20240229", None)
     
     def test_symbol_parsing(self):
         """Test symbol parsing functionality"""
@@ -257,7 +257,7 @@ class TestWLSRegressor(unittest.TestCase):
         ]
         sample_df = pl.DataFrame(sample_data).lazy()
         
-        self.symbol_manager = DeribitMDManager(sample_df, "20240229")
+        self.symbol_manager = DeribitMDManager(sample_df, "20240229", self.config_loader)
         self.wls_regressor = WLSRegressor(
             symbol_manager=self.symbol_manager,
             config_loader=self.config_loader
@@ -332,7 +332,7 @@ class TestNonlinearMinimization(unittest.TestCase):
         ]
         sample_df = pl.DataFrame(sample_data).lazy()
         
-        self.symbol_manager = DeribitMDManager(sample_df, "20240229")
+        self.symbol_manager = DeribitMDManager(sample_df, "20240229", self.config_loader)
         self.nonlinear_minimizer = NonlinearMinimization(
             symbol_manager=self.symbol_manager,
             config_loader=self.config_loader
@@ -503,7 +503,7 @@ class TestIntegrationWorkflow(unittest.TestCase):
         sample_lazy_df = pl.DataFrame(sample_data).lazy()
         
         # Initialize all components with proper parameters
-        self.md_manager = DeribitMDManager(sample_lazy_df, "20240229")
+        self.md_manager = DeribitMDManager(sample_lazy_df, "20240229", self.config_loader)
         self.wls_regressor = WLSRegressor(
             symbol_manager=self.md_manager,
             config_loader=self.config_loader
