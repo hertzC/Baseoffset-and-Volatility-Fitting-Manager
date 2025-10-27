@@ -14,6 +14,10 @@ class DataFormatter:
             gui_instance: Reference to the main GUI instance
         """
         self.gui = gui_instance
+
+    def format_text(self, value):
+        """Format text value"""
+        return str(value)
     
     def format_delta(self, value):
         """Format delta value"""

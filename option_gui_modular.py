@@ -125,6 +125,10 @@ class OptionAnalysisGUI:
             self.option_chain_tab.rebuild_with_currency()
     
     # Data formatting methods (delegated to DataFormatter)
+    def _format_text(self, value):
+        """Format text value"""
+        return self.data_formatter.format_text(value)
+    
     def _format_delta(self, value):
         """Format delta value"""
         return self.data_formatter.format_delta(value)
