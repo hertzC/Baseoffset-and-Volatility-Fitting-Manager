@@ -2,6 +2,19 @@ from dataclasses import dataclass, fields
 import numpy as np
 from typing import Optional
 
+      
+# Default bounds if no configuration provided
+default_bounds = {
+    'vr': (0.05, 5.0),    # volatility reference bounds
+    'sr': (-2.0, 2.0),    # slope reference bounds  
+    'pc': (0.01, 5.0),   # put curvature bounds
+    'cc': (0.01, 5.0),   # call curvature bounds
+    'dc': (-5.0, -0.01),    # down cutoff bounds (must be negative)
+    'uc': (0.01, 5.0),     # up cutoff bounds (must be positive)
+    'dsm': (0.1, 10.0),  # down smoothing bounds (must be positive)
+    'usm': (0.1, 10.0),  # up smoothing bounds (must be positive)
+}
+
 
 @dataclass
 class WingModelParameters:
@@ -78,19 +91,7 @@ class WingModelParameters:
                 return config_bounds
             except Exception as e:
                 print(f"Warning: Could not get bounds from config: {e}")
-                # Fall back to default bounds
-        
-        # Default bounds if no configuration provided
-        default_bounds = {
-            'vr': (0.05, 5.0),    # volatility reference bounds
-            'sr': (-2.0, 2.0),    # slope reference bounds  
-            'pc': (0.001, 5.0),   # put curvature bounds
-            'cc': (0.001, 5.0),   # call curvature bounds
-            'dc': (-5.0, 0.0),    # down cutoff bounds (must be negative)
-            'uc': (0.0, 5.0),     # up cutoff bounds (must be positive)
-            'dsm': (0.01, 10.0),  # down smoothing bounds (must be positive)
-            'usm': (0.01, 10.0),  # up smoothing bounds (must be positive)
-        }
+                # Fall back to default bounds  
         
         for name in param_names:
             if name in default_bounds:

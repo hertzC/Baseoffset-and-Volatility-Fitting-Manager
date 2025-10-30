@@ -4,7 +4,7 @@
 # Data Configuration
 data:
   # Date string in YYYYMMDD format for market data
-  date_str: "20240229"
+  date_str: "20251008"
   
   # Data source configuration
   use_orderbook_data: true
@@ -50,12 +50,12 @@ models:
     bounds:
       vr: [0.05, 5.0]      # volatility reference bounds
       sr: [-2.0, 2.0]      # slope reference bounds  
-      pc: [0.001, 5.0]      # put curvature bounds
-      cc: [0.001, 5.0]      # call curvature bounds
-      dc: [-5.0, 0.0]      # down cutoff bounds (must be negative)
-      uc: [0.0, 5.0]       # up cutoff bounds (must be positive)
-      dsm: [0.01, 10.0]     # down smoothing bounds (must be positive)
-      usm: [0.01, 10.0]     # up smoothing bounds (must be positive)
+      pc: [0.01, 5.0]      # put curvature bounds
+      cc: [0.01, 5.0]      # call curvature bounds
+      dc: [-5.0, -0.01]      # down cutoff bounds (must be negative)
+      uc: [0.01, 5.0]       # up cutoff bounds (must be positive)
+      dsm: [0.1, 10.0]     # down smoothing bounds (must be positive)
+      usm: [0.1, 10.0]     # up smoothing bounds (must be positive)
   
   # Time-Adjusted Wing Model settings (uses same parameters as wing_model)
   time_adjusted_wing_model:
@@ -66,12 +66,12 @@ models:
     bounds:
       vr: [0.05, 5.0]
       sr: [-2.0, 2.0]
-      pc: [-1.001, 5.0]
-      cc: [0.001, 5.0]
-      dc: [-5.0, 0.0]
-      uc: [0.0, 5.0]
-      dsm: [0.01, 10.0]
-      usm: [0.01, 10.0]
+      pc: [0.01, 5.0]
+      cc: [0.01, 5.0]
+      dc: [-5.0, -0.01]
+      uc: [0.01, 5.0]
+      dsm: [0.1, 10.0]
+      usm: [0.1, 10.0]
 
 # Calibration Configuration
 calibration:
